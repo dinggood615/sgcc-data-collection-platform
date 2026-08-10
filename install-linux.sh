@@ -6,8 +6,8 @@ export LANG="${LANG:-C.UTF-8}"
 export LC_ALL="${LC_ALL:-C.UTF-8}"
 
 # One-command native installer for systemd Linux distributions.
-REPOSITORY_URL="${1:-https://github.com/dinggood615/data-collection-management-platform.git}"
-INSTALL_DIR="${INSTALL_DIR:-/opt/data-collection-management-platform}"
+REPOSITORY_URL="${1:-https://github.com/dinggood615/sgcc-data-collection-platform.git}"
+INSTALL_DIR="${INSTALL_DIR:-/opt/sgcc-data-collection-platform}"
 SERVICE_USER="tenderplatform"
 PUBLIC_PORT="${PORT:-5555}"
 BACKEND_PORT=8000
@@ -54,7 +54,7 @@ verify_https_entry() {
 install_packages() {
   if command -v apt-get >/dev/null; then
     apt-get update
-    DEBIAN_FRONTEND=noninteractive apt-get install -y ca-certificates git python3 python3-venv python3-pip build-essential openssl curl nginx
+    DEBIAN_FRONTEND=noninteractive apt-get install -y ca-certificates git python3 python3-venv python3-pip build-essential openssl curl nginx libreoffice-core libreoffice-writer libreoffice-calc poppler-utils p7zip-full tesseract-ocr tesseract-ocr-chi-sim
   elif command -v dnf >/dev/null; then
     dnf install -y ca-certificates git python3 python3-pip gcc gcc-c++ make openssl curl nginx
   elif command -v yum >/dev/null; then

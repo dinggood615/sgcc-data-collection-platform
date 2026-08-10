@@ -14,9 +14,11 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install application and test dependencies
-        run: python -m pip install --upgrade pip && python -m pip install -r requirements.txt httpx
+        run: python -m pip install --upgrade pip && python -m pip install -r requirements.txt httpx pytest
       - name: Compile Python sources
         run: python -m compileall app
+      - name: Run unit tests
+        run: python -m pytest -q
       - name: Check shell scripts
         run: |
           for script in install.sh install-linux.sh install-docker.sh install-browser.sh update-linux.sh manage.sh uninstall-linux.sh; do
@@ -38,7 +40,7 @@ jobs:
           from app.database import connect, init_db, setting
           init_db()
           with connect() as db:
-              for table in ("custom_sites", "keywords", "tenders", "runs"):
+              for table in ("custom_sites", "keywords", "tenders", "runs", "sgcc_documents", "sgcc_packages"):
                   assert db.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0] == 0, table
           for key in ("schedule", "recipient", "smtp_host", "smtp_port", "smtp_user", "smtp_from",
                       "wecom_corp_id", "wecom_callback_token", "wecom_encoding_aes_key",
@@ -93,7 +95,7 @@ jobs:
           with sqlite3.connect(rollback) as backup:
               assert backup.execute("SELECT COUNT(*) FROM tenders").fetchone()[0] == 1
           with connect() as db:
-              for table in ("custom_sites", "keywords", "tenders", "runs"):
+              for table in ("custom_sites", "keywords", "tenders", "runs", "sgcc_documents", "sgcc_packages"):
                   assert db.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0] == 0
           assert setting("admin_username") == "keeper"
           assert setting("admin_password", secret=True) == "strong-password"

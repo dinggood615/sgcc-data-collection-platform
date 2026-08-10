@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPOSITORY_URL="${1:-https://github.com/dinggood615/data-collection-management-platform.git}"
-INSTALL_DIR="${INSTALL_DIR:-/opt/data-collection-management-platform}"
+REPOSITORY_URL="${1:-https://github.com/dinggood615/sgcc-data-collection-platform.git}"
+INSTALL_DIR="${INSTALL_DIR:-/opt/sgcc-data-collection-platform}"
 
 if [ "${EUID}" -ne 0 ]; then
   echo "请使用 sudo 运行：sudo bash install.sh"

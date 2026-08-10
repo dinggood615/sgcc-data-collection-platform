@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-INSTALL_DIR="${1:-/opt/data-collection-management-platform}"
+INSTALL_DIR="${1:-/opt/sgcc-data-collection-platform}"
 SERVICE_USER="${2:-tenderplatform}"
 
 [ "${EUID}" -eq 0 ] || { echo "请使用 sudo 运行" >&2; exit 1; }

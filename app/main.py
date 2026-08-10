@@ -19,8 +19,9 @@ from .database import backup_database, connect, export_migration_bundle, import_
 from .connectors.custom import profile_site, profile_site_from_manual_browser, validate_public_url, validate_site_name
 from .emailing import normalize_recipients
 from .matching import parse_terms
+from .sgcc.pipeline import MAX_UPLOAD_BYTES, ingest_attachment
 
-app = FastAPI(title="数据采集管理平台")
+app = FastAPI(title="国网数据采集管理平台")
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 templates = Jinja2Templates(directory="app/templates")
 scheduler = BackgroundScheduler(timezone="Asia/Shanghai")
@@ -71,6 +72,8 @@ def dashboard_context() -> dict:
         custom_sites = [dict(row) for row in db.execute("SELECT * FROM custom_sites ORDER BY id DESC")]
         total_results = db.execute("SELECT COUNT(*) FROM tenders").fetchone()[0]
         successful_runs = db.execute("SELECT COUNT(*) FROM runs WHERE status='success'").fetchone()[0]
+        sgcc_documents = db.execute("SELECT * FROM sgcc_documents ORDER BY imported_at DESC LIMIT 12").fetchall()
+        sgcc_packages = db.execute("SELECT * FROM sgcc_packages WHERE relevance_score>=20 ORDER BY created_at DESC LIMIT 30").fetchall()
     for site in custom_sites:
         if site.get("builtin_code"):
             site["status"] = "已适配（专用采集器）"
@@ -97,6 +100,7 @@ def dashboard_context() -> dict:
         else:
             site["next_step"] = "请确认填写的是公告列表页而非首页、详情页或搜索页；确认公开可访问后点击“重新识别”。"
     return {"keywords": keywords, "runs": runs, "results": results, "custom_sites": custom_sites,
+            "sgcc_documents": sgcc_documents, "sgcc_packages": sgcc_packages,
             "enabled_site_count": sum(1 for site in custom_sites if site["enabled"]),
             "total_result_count": total_results, "successful_run_count": successful_runs,
             "schedule": setting("schedule"), "recipient": setting("recipient"),
@@ -110,6 +114,7 @@ def dashboard_context() -> dict:
             "backup_retention_days": setting("backup_retention_days", "14"),
             "last_backup": setting("last_backup"), "backup_message": setting("backup_message"),
             "migration_message": setting("migration_message"),
+            "sgcc_message": setting("sgcc_message"),
             "wecom_message": setting("wecom_message"),
             "wecom_push_message": setting("wecom_push_message"),
             "wecom_webhook_configured": bool(setting("wecom_webhook", secret=True)),
@@ -147,6 +152,40 @@ def healthz():
         return {"status": "ok"}
     except Exception:
         return JSONResponse({"status": "error"}, status_code=503)
+
+
+@app.post("/sgcc/import")
+async def import_sgcc_attachment(
+    attachment: UploadFile = File(...),
+    notice_id: str = Form(""),
+    source_url: str = Form(""),
+):
+    """Import an attachment obtained through a public or otherwise authorized channel."""
+    try:
+        payload = await attachment.read(MAX_UPLOAD_BYTES + 1)
+        with connect() as db:
+            keywords = [row["term"] for row in db.execute("SELECT term FROM keywords WHERE enabled=1")]
+        if not keywords:
+            raise ValueError("请先设置筛选关键词，再导入国网附件")
+        result = ingest_attachment(
+            attachment.filename or "attachment.bin",
+            payload,
+            notice_id,
+            source_url,
+            keywords,
+            parse_terms(setting("exclude_terms")),
+        )
+        message = f"附件处理完成：识别 {result.package_count} 个候选项目/标包，命中 {result.matched_count} 个"
+        if result.status == "duplicate":
+            message = "该附件已处理过，已直接显示原有结果"
+        if result.warnings:
+            message += "；" + "；".join(result.warnings)
+        set_setting("sgcc_message", message)
+    except ValueError as exc:
+        set_setting("sgcc_message", f"附件未处理：{exc}")
+    except Exception as exc:
+        set_setting("sgcc_message", f"附件处理失败：{type(exc).__name__}")
+    return RedirectResponse("/#sgcc", 303)
 
 
 @app.get("/_internal/auth-check", status_code=204)
@@ -432,7 +471,7 @@ def test_wecom_push():
         set_setting("wecom_push_message", "请先填写并保存机器人 Webhook。")
     else:
         try:
-            send_wecom_robot_message(webhook, "数据采集管理平台测试消息\n企业微信推送已连接。")
+            send_wecom_robot_message(webhook, "国网数据采集管理平台测试消息\n企业微信推送已连接。")
             set_setting("wecom_push_message", "测试消息已发送，请查看企业微信群。")
         except Exception as exc:
             set_setting("wecom_push_message", f"测试发送失败：{type(exc).__name__}")

@@ -78,6 +78,37 @@ def init_db() -> None:
             builtin_code TEXT,
             created_at TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS sgcc_documents (
+            sha256 TEXT PRIMARY KEY,
+            original_name TEXT NOT NULL,
+            size_bytes INTEGER NOT NULL,
+            source_url TEXT NOT NULL DEFAULT '',
+            notice_id TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL,
+            message TEXT NOT NULL DEFAULT '',
+            imported_at TEXT NOT NULL,
+            processed_at TEXT NOT NULL DEFAULT ''
+        );
+        CREATE TABLE IF NOT EXISTS sgcc_packages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            document_sha256 TEXT NOT NULL,
+            stable_key TEXT NOT NULL UNIQUE,
+            notice_id TEXT NOT NULL DEFAULT '',
+            tender_no TEXT NOT NULL DEFAULT '',
+            package_no TEXT NOT NULL DEFAULT '',
+            project_name TEXT NOT NULL DEFAULT '',
+            package_name TEXT NOT NULL DEFAULT '',
+            procurement_scope TEXT NOT NULL DEFAULT '',
+            source_file TEXT NOT NULL,
+            source_location TEXT NOT NULL DEFAULT '',
+            evidence TEXT NOT NULL DEFAULT '',
+            matched_terms TEXT NOT NULL DEFAULT '',
+            relevance_score INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY(document_sha256) REFERENCES sgcc_documents(sha256)
+        );
+        CREATE INDEX IF NOT EXISTS idx_sgcc_packages_document ON sgcc_packages(document_sha256);
+        CREATE INDEX IF NOT EXISTS idx_sgcc_documents_notice ON sgcc_documents(notice_id);
         """)
         columns = {row["name"] for row in db.execute("PRAGMA table_info(custom_sites)")}
         if "builtin_code" not in columns:
@@ -149,9 +180,9 @@ def reset_platform_state() -> Path:
             f"SELECT key,value FROM settings WHERE key IN ({','.join('?' for _ in preserved_keys)})",
             preserved_keys,
         ).fetchall()
-        for table in ("tenders", "runs", "keywords", "custom_sites"):
+        for table in ("sgcc_packages", "sgcc_documents", "tenders", "runs", "keywords", "custom_sites"):
             db.execute(f"DELETE FROM {table}")
-        db.execute("DELETE FROM sqlite_sequence WHERE name IN ('runs','custom_sites')")
+        db.execute("DELETE FROM sqlite_sequence WHERE name IN ('runs','custom_sites','sgcc_packages')")
         db.execute("DELETE FROM settings")
         db.executemany("INSERT INTO settings(key,value) VALUES(?,?)", ((row["key"], row["value"]) for row in preserved))
     return rollback

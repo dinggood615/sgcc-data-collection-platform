@@ -16,11 +16,11 @@ if [ "$ACTION" = "--help" ] || [ "$ACTION" = "help" ]; then
   exit 0
 fi
 AUTO_CONFIRM="${2:-}"
-REPOSITORY_SLUG="${REPOSITORY_SLUG:-dinggood615/data-collection-management-platform}"
+REPOSITORY_SLUG="${REPOSITORY_SLUG:-dinggood615/sgcc-data-collection-platform}"
 BRANCH="${BRANCH:-main}"
 PLATFORM_PORT="${PLATFORM_PORT:-8000}"
 TZ="${TZ:-Asia/Shanghai}"
-PROJECT_NAME="${COMPOSE_PROJECT_NAME:-data-collection-platform}"
+PROJECT_NAME="${COMPOSE_PROJECT_NAME:-sgcc-data-collection-platform}"
 
 detect_platform() {
   if [ -f /etc/synoinfo.conf ]; then echo synology
@@ -33,9 +33,9 @@ detect_platform() {
 PLATFORM="$(detect_platform)"
 if [ -z "${INSTALL_DIR:-}" ]; then
   case "$PLATFORM" in
-    synology) INSTALL_DIR="/volume1/docker/data-collection-management-platform" ;;
-    openwrt) INSTALL_DIR="/opt/docker/data-collection-management-platform" ;;
-    *) INSTALL_DIR="/opt/data-collection-management-platform" ;;
+    synology) INSTALL_DIR="/volume1/docker/sgcc-data-collection-platform" ;;
+    openwrt) INSTALL_DIR="/opt/docker/sgcc-data-collection-platform" ;;
+    *) INSTALL_DIR="/opt/sgcc-data-collection-platform" ;;
   esac
 fi
 DATA_DIR="${DATA_DIR:-$INSTALL_DIR/data}"

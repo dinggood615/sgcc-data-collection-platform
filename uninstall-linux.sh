@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-INSTALL_DIR="${INSTALL_DIR:-/opt/data-collection-management-platform}"
+INSTALL_DIR="${INSTALL_DIR:-/opt/sgcc-data-collection-platform}"
 AUTO_CONFIRM="${1:-}"
 
 if [ "${EUID}" -ne 0 ]; then

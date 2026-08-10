@@ -4,8 +4,8 @@ set -euo pipefail
 [ "${EUID}" -eq 0 ] || { echo "请使用 sudo 运行更新脚本。" >&2; exit 1; }
 
 if [ -z "${INSTALL_DIR:-}" ]; then
-  if [ -d /opt/data-collection-management-platform/.git ]; then
-    INSTALL_DIR=/opt/data-collection-management-platform
+  if [ -d /opt/sgcc-data-collection-platform/.git ]; then
+    INSTALL_DIR=/opt/sgcc-data-collection-platform
   elif [ -d /opt/tender-collection-platform/.git ]; then
     INSTALL_DIR=/opt/tender-collection-platform
   else

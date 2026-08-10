@@ -9,3 +9,6 @@ wechatpy[cryptography]==1.8.18
 scrapling[fetchers]==0.4.12
 playwright==1.61.0
 beautifulsoup4==4.14.3
+openpyxl==3.1.5
+python-docx==1.2.0
+PyMuPDF==1.26.7
