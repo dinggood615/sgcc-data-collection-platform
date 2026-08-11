@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import shutil
 import stat
+import struct
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -38,6 +39,30 @@ def _safe_destination(root: Path, name: str) -> Path:
     return target
 
 
+def _local_member_names(archive: zipfile.ZipFile, member: zipfile.ZipInfo) -> tuple[str, str]:
+    """Read the authoritative local-header name for malformed SGCC ZIPs."""
+    if archive.fp is None:
+        return member.filename, member.orig_filename
+    position = archive.fp.tell()
+    try:
+        archive.fp.seek(member.header_offset)
+        header = archive.fp.read(zipfile.sizeFileHeader)
+        fields = struct.unpack(zipfile.structFileHeader, header)
+        if fields[0] != zipfile.stringFileHeader:
+            raise UnsafeArchive("ZIP 文件头无效")
+        raw_name = archive.fp.read(fields[zipfile._FH_FILENAME_LENGTH])
+        utf8_flag = bool(fields[zipfile._FH_GENERAL_PURPOSE_FLAG_BITS] & zipfile._MASK_UTF_FILENAME)
+        expected_name = raw_name.decode("utf-8" if utf8_flag else (archive.metadata_encoding or "cp437"))
+        for encoding in ("utf-8", "gb18030", "cp437"):
+            try:
+                return raw_name.decode(encoding), expected_name
+            except UnicodeDecodeError:
+                continue
+        return member.filename, expected_name
+    finally:
+        archive.fp.seek(position)
+
+
 def extract_zip_safely(archive_path: Path, output_dir: Path, limits: ArchiveLimits | None = None, depth: int = 0) -> list[Path]:
     limits = limits or ArchiveLimits()
     if depth > limits.max_depth:
@@ -52,6 +77,12 @@ def extract_zip_safely(archive_path: Path, output_dir: Path, limits: ArchiveLimi
         if len(archive.infolist()) > limits.max_files:
             raise UnsafeArchive("压缩包文件数量超过限制")
         for member in archive.infolist():
+            local_name, expected_name = _local_member_names(archive, member)
+            # Some SGCC archives use GBK in the central directory but UTF-8 in
+            # the local header. Align ZipInfo with the local header so Python's
+            # integrity check succeeds; all path-safety checks still apply.
+            member.filename = local_name
+            member.orig_filename = expected_name
             mode = member.external_attr >> 16
             if stat.S_ISLNK(mode):
                 raise UnsafeArchive("压缩包包含符号链接")

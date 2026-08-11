@@ -39,3 +39,30 @@ def test_returns_partial_results_when_later_page_fails(monkeypatch):
     items, warning = sgcc_portal.collect_sgcc_portal("2026-08-10")
     assert len(items) == 1
     assert "已保留本次成功读取的 1 条记录" in warning
+
+
+def test_automatic_attachment_evidence_is_used_for_matching(monkeypatch):
+    monkeypatch.setattr(sgcc_portal, "_request_page", lambda _page: {
+        "successful": True,
+        "resultValue": {"count": 1, "noteList": [{
+            "noticeId": 11,
+            "title": "某服务类公开招标采购",
+            "noticePublishTime": "2026-08-10",
+            "doctype": "doci-bid",
+        }]},
+    })
+    monkeypatch.setattr(
+        sgcc_portal,
+        "_automatic_attachment_analysis",
+        lambda _item, _keywords, _exclusions: ("包1：调度管理系统软件开发与实施服务", ""),
+    )
+    items, warning = sgcc_portal.collect_sgcc_portal("2026-08-10", ["软件开发"], [])
+    assert warning == ""
+    assert "软件开发" in items[0]["excerpt"]
+
+
+def test_invitation_attachment_respects_access_control():
+    item = {"notice_type": "投标邀请书", "source_item_id": "11", "url": "https://example.com"}
+    excerpt, warning = sgcc_portal._automatic_attachment_analysis(item, ["软件开发"], [])
+    assert excerpt == ""
+    assert "未尝试绕过访问控制" in warning
