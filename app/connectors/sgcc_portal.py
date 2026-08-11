@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import time
 from datetime import date
 from urllib.parse import quote, unquote
@@ -18,6 +19,10 @@ MENU_ID = "2018032700291334"
 PAGE_SIZE = 100
 MAX_PAGES = 100
 DOWNLOAD_URL = "https://ecp.sgcc.com.cn/ecp2.0/ecpwcmcore//index/downLoadBid"
+
+
+class RestrictedAttachment(PermissionError):
+    """The portal requires an invited bidder account for this attachment."""
 
 
 def _request_page(page: int) -> dict:
@@ -56,7 +61,7 @@ def _detail_url(record: dict) -> str:
     return f"https://ecp.sgcc.com.cn/ecp2.0/portal/#/doc/{document_type}/{document_id}_{MENU_ID}"
 
 
-def _download_public_attachment(notice_id: str) -> tuple[str, bytes]:
+def _download_public_attachment_once(notice_id: str) -> tuple[str, bytes]:
     url = f"{DOWNLOAD_URL}?noticeId={quote(notice_id)}&noticeDetId="
     request = Request(url, headers={
         "Accept": "application/octet-stream,*/*",
@@ -70,11 +75,29 @@ def _download_public_attachment(notice_id: str) -> tuple[str, bytes]:
     if not payload or len(payload) > MAX_UPLOAD_BYTES:
         raise ValueError("公告附件为空或超过 100 MB")
     if "json" in content_type or payload[:1] in {b"{", b"["}:
-        raise ValueError("公告附件需要登录、邀请权限或人工获取")
+        raise RestrictedAttachment("公告附件受邀账号权限保护")
     filename = "国网公告附件.zip"
     if "filename=" in disposition:
         filename = unquote(disposition.split("filename=", 1)[1].strip().strip('"')) or filename
     return filename, payload
+
+
+def _download_public_attachment(notice_id: str) -> tuple[str, bytes]:
+    """Retry temporary portal/network errors without retrying access restrictions."""
+    attempts = max(1, min(int(os.getenv("ATTACHMENT_DOWNLOAD_RETRIES", "3")), 5))
+    for attempt in range(1, attempts + 1):
+        try:
+            return _download_public_attachment_once(notice_id)
+        except RestrictedAttachment:
+            raise
+        except HTTPError as exc:
+            if exc.code not in {408, 425, 429, 500, 502, 503, 504} or attempt == attempts:
+                raise
+        except (URLError, TimeoutError, ConnectionError):
+            if attempt == attempts:
+                raise
+        time.sleep(min(2 ** (attempt - 1), 4))
+    raise RuntimeError("附件自动下载重试结束")
 
 
 def _automatic_attachment_analysis(item: dict, keywords: list[str], exclusions: list[str]) -> tuple[str, str]:
@@ -84,7 +107,7 @@ def _automatic_attachment_analysis(item: dict, keywords: list[str], exclusions: 
     verifies the logged-in bidder list before allowing access.
     """
     if item["notice_type"] == "投标邀请书":
-        return "", "投标邀请书附件需要受邀账号权限，未尝试绕过访问控制"
+        return "", "restricted"
     notice_id = item["source_item_id"]
     filename, payload = _download_public_attachment(notice_id)
     result = ingest_attachment(filename, payload, notice_id, item["url"], keywords, exclusions)
@@ -96,7 +119,7 @@ def _automatic_attachment_analysis(item: dict, keywords: list[str], exclusions: 
             (notice_id,),
         ).fetchall()
     if not matches:
-        return "", "" if result.status in {"processed", "duplicate"} else "附件需要人工检查"
+        return "", "" if result.status in {"processed", "duplicate", "no_text"} else "unavailable"
     evidence = []
     for match in matches:
         name = match["project_name"] or match["package_name"] or (f"包{match['package_no']}" if match["package_no"] else "附件命中")
@@ -114,6 +137,7 @@ def collect_sgcc_portal(target_date: str, keywords: list[str] | None = None, exc
     items: list[dict] = []
     seen: set[str] = set()
     analysis_warnings: list[str] = []
+    restricted_count = 0
     try:
         for page in range(1, MAX_PAGES + 1):
             payload = _request_page(page)
@@ -155,10 +179,17 @@ def collect_sgcc_portal(target_date: str, keywords: list[str] | None = None, exc
                         if attachment_excerpt:
                             item["excerpt"] = "\n".join(part for part in (item["excerpt"], attachment_excerpt) if part)
                         if attachment_warning:
-                            analysis_warnings.append(f"{title}：{attachment_warning}")
+                            if attachment_warning == "restricted":
+                                restricted_count += 1
+                            elif attachment_warning == "unavailable":
+                                analysis_warnings.append(f"{title}：附件已自动归类为暂不可解析")
+                            else:
+                                analysis_warnings.append(f"{title}：{attachment_warning}")
                         time.sleep(0.5)
+                    except RestrictedAttachment:
+                        restricted_count += 1
                     except Exception as exc:
-                        analysis_warnings.append(f"{title}：附件自动分析失败（{type(exc).__name__}）")
+                        analysis_warnings.append(f"{title}：自动重试后仍未取得附件（{type(exc).__name__}）")
                 items.append(item)
             if page_dates and max(page_dates) < target_date:
                 break
@@ -168,9 +199,12 @@ def collect_sgcc_portal(target_date: str, keywords: list[str] | None = None, exc
             time.sleep(0.8)
     except (HTTPError, URLError, TimeoutError, json.JSONDecodeError, RuntimeError) as exc:
         return items, f"国网公开数据接口访问异常：{type(exc).__name__}；已保留本次成功读取的 {len(items)} 条记录"
+    summaries: list[str] = []
+    if restricted_count:
+        summaries.append(f"{restricted_count} 个受邀权限附件已自动识别并跳过")
     if analysis_warnings:
         shown = "；".join(analysis_warnings[:3])
         if len(analysis_warnings) > 3:
-            shown += f"；另有 {len(analysis_warnings) - 3} 个附件待检查"
-        return items, shown
-    return items, ""
+            shown += f"；另有 {len(analysis_warnings) - 3} 个附件已记录自动处理原因"
+        summaries.append(shown)
+    return items, "；".join(summaries)
