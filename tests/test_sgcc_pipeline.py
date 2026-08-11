@@ -5,6 +5,7 @@ from docx import Document
 
 from app.database import connect, init_db
 from app.sgcc.pipeline import ingest_attachment
+from app.sgcc import pipeline
 
 
 def _workbook_bytes() -> bytes:
@@ -66,3 +67,22 @@ def test_word_fields_on_adjacent_paragraphs_are_joined(monkeypatch, tmp_path):
     assert row["package_no"] == "包3"
     assert row["project_name"] == "统一数据中台建设"
     assert "软件开发" in row["evidence"]
+
+
+def test_attachment_documents_are_parsed_in_bounded_parallel_pool(monkeypatch, tmp_path):
+    paths = []
+    for index in range(4):
+        path = tmp_path / f"{index}.txt"
+        path.write_text(f"项目 {index}", encoding="utf-8")
+        paths.append(path)
+    seen = []
+
+    def fake_parse(path):
+        seen.append(path.name)
+        return [pipeline.TextBlock(path.stem, path.name, "测试")], ""
+
+    monkeypatch.setenv("ATTACHMENT_PARSE_WORKERS", "4")
+    monkeypatch.setattr(pipeline, "parse_document", fake_parse)
+    results = pipeline._parse_paths_parallel(paths)
+    assert len(results) == 4
+    assert set(seen) == {"0.txt", "1.txt", "2.txt", "3.txt"}

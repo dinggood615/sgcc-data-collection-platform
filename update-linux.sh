@@ -73,6 +73,17 @@ update_started=1
 "${GIT[@]}" pull --ff-only origin main
 
 echo "正在更新 Python 依赖和数据库结构……"
+if command -v apt-get >/dev/null 2>&1; then
+  conversion_packages=()
+  command -v libreoffice >/dev/null 2>&1 || conversion_packages+=(libreoffice-core libreoffice-writer libreoffice-calc)
+  command -v 7zz >/dev/null 2>&1 || conversion_packages+=(7zip)
+  command -v unar >/dev/null 2>&1 || conversion_packages+=(unar)
+  if [ "${#conversion_packages[@]}" -gt 0 ]; then
+    echo "正在补充附件转换工具：${conversion_packages[*]}"
+    apt-get update
+    DEBIAN_FRONTEND=noninteractive apt-get install -y "${conversion_packages[@]}"
+  fi
+fi
 "$INSTALL_DIR/.venv/bin/pip" install --upgrade pip wheel
 "$INSTALL_DIR/.venv/bin/pip" install -r "$INSTALL_DIR/requirements.txt"
 chown -R "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR"

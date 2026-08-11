@@ -85,7 +85,15 @@ def dashboard_context() -> dict:
         total_results = db.execute("SELECT COUNT(*) FROM tenders").fetchone()[0]
         successful_runs = db.execute("SELECT COUNT(*) FROM runs WHERE status='success'").fetchone()[0]
         sgcc_documents = db.execute("SELECT * FROM sgcc_documents ORDER BY imported_at DESC LIMIT 12").fetchall()
-        sgcc_packages = db.execute("SELECT * FROM sgcc_packages WHERE relevance_score>=20 ORDER BY created_at DESC LIMIT 30").fetchall()
+        sgcc_packages = db.execute(
+            """SELECT p.*, t.title AS notice_title, t.url AS notice_url, t.published_date,
+                      d.original_name AS attachment_name, d.source_url AS attachment_url
+               FROM sgcc_packages p
+               LEFT JOIN tenders t ON t.source_item_id=p.notice_id
+               LEFT JOIN sgcc_documents d ON d.sha256=p.document_sha256
+               WHERE p.relevance_score>=20
+               ORDER BY p.created_at DESC,p.id DESC LIMIT 30"""
+        ).fetchall()
     for site in custom_sites:
         if site.get("builtin_code"):
             site["status"] = "已适配（专用采集器）"
