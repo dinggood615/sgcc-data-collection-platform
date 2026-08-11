@@ -24,6 +24,16 @@ MIGRATION_SECRET_KEYS = (
     "wecom_webhook",
 )
 MIGRATION_MAX_BYTES = 100 * 1024 * 1024
+KEYWORD_SEED_VERSION = "2026-08-11-v1"
+CURATED_KEYWORDS = (
+    "信息化", "信息化建设", "信息系统", "信息系统建设", "数字化", "数字化建设", "数字化转型",
+    "软件开发", "软件实施", "系统实施", "系统开发", "应用开发", "平台开发", "二次开发", "定制开发",
+    "系统集成", "系统建设", "平台建设", "应用系统", "系统改造", "系统升级", "国产化适配", "信创",
+    "数据治理", "数据中台", "大数据", "数据分析", "数据服务", "人工智能", "云平台", "物联网",
+    "网络安全", "数据安全", "信息安全", "技术服务", "运维服务", "信息系统运维", "软件运维",
+    "人力外包", "人员外包", "技术外包", "IT外包", "软件外包", "研发外包", "驻场服务", "驻场开发",
+    "人力资源服务", "劳务派遣",
+)
 
 
 
@@ -171,6 +181,18 @@ def init_db() -> None:
         )
         for key, value in defaults:
             db.execute("INSERT OR IGNORE INTO settings(key,value) VALUES(?,?)", (key, value))
+        seed_version = db.execute("SELECT value FROM settings WHERE key='keyword_seed_version'").fetchone()
+        if not seed_version or seed_version["value"] != KEYWORD_SEED_VERSION:
+            # This version is an intentional baseline replacement. Recording the
+            # version lets users clear or customize the list without it returning
+            # on every application restart.
+            db.execute("DELETE FROM keywords")
+            db.executemany("INSERT INTO keywords(term,enabled) VALUES(?,1)", ((term,) for term in CURATED_KEYWORDS))
+            db.execute(
+                "INSERT INTO settings(key,value) VALUES('keyword_seed_version',?) "
+                "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                (KEYWORD_SEED_VERSION,),
+            )
 
 
 def backup_database(retention_days: int) -> Path:
