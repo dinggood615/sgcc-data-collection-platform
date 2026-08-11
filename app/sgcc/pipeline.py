@@ -14,13 +14,14 @@ from .documents import TextBlock, parse_document
 
 
 MAX_UPLOAD_BYTES = 100 * 1024 * 1024
-PACKAGE_MARKERS = ("包号", "包名称", "项目名称", "分标名称", "采购范围", "项目概况", "服务名称")
+PACKAGE_MARKERS = ("包号", "包编号", "包名称", "标包名称", "项目名称", "工程名称", "需求名称", "分标名称", "采购范围", "项目概况", "服务名称", "服务内容")
+STRONG_PACKAGE_MARKERS = ("包号", "包编号")
 FIELD_PATTERNS = {
     "tender_no": re.compile(r"(?:分标编号|招标编号|采购编号)\s*[：:]?\s*([^|；;，,\s]{3,80})"),
     "package_no": re.compile(r"(?:包号|包编号)\s*[：:]?\s*([^|；;，,\s]{1,40})"),
-    "project_name": re.compile(r"项目名称\s*[：:]?\s*([^|；;]{2,160})"),
-    "package_name": re.compile(r"(?:包名称|分标名称)\s*[：:]?\s*([^|；;]{2,160})"),
-    "procurement_scope": re.compile(r"(?:采购范围|项目概况|服务内容)\s*[：:]?\s*([^|；;]{2,300})"),
+    "project_name": re.compile(r"(?:项目名称|工程名称|需求名称)\s*[：:]?\s*([^|；;]{2,160})"),
+    "package_name": re.compile(r"(?:包名称|标包名称|分标名称)\s*[：:]?\s*([^|；;]{2,160})"),
+    "procurement_scope": re.compile(r"(?:采购范围|项目概况|服务内容|工作内容|技术规范)\s*[：:]?\s*([^|；;]{2,300})"),
 }
 
 
@@ -39,8 +40,41 @@ def _field(pattern_name: str, text: str) -> str:
 
 
 def _candidate_blocks(blocks: list[TextBlock]) -> list[TextBlock]:
-    marked = [block for block in blocks if any(marker in block.text for marker in PACKAGE_MARKERS)]
-    return marked or blocks
+    """Join nearby paragraphs/rows that belong to one package.
+
+    SGCC Word and PDF attachments often put package number, project name and
+    scope on separate lines. Scoring each line independently loses the semantic
+    relationship. Strong package markers define boundaries; a small context
+    window supplies global tender metadata without merging the next package.
+    """
+    grouped: dict[str, list[TextBlock]] = {}
+    for block in blocks:
+        grouped.setdefault(block.source_file, []).append(block)
+    candidates: list[TextBlock] = []
+    for source_file, items in grouped.items():
+        anchors = [index for index, block in enumerate(items) if any(marker in block.text for marker in STRONG_PACKAGE_MARKERS)]
+        if not anchors:
+            anchors = [index for index, block in enumerate(items) if any(marker in block.text for marker in PACKAGE_MARKERS)]
+        if not anchors:
+            candidates.extend(items)
+            continue
+        for position, anchor in enumerate(anchors):
+            start = max(0, anchor - 2)
+            next_anchor = anchors[position + 1] if position + 1 < len(anchors) else len(items)
+            end = min(next_anchor, anchor + 5)
+            selected = items[start:end]
+            text = " | ".join(dict.fromkeys(block.text for block in selected if block.text))
+            candidates.append(TextBlock(text, source_file, items[anchor].location))
+    return candidates
+
+
+def _evidence_excerpt(text: str, terms: tuple[str, ...], limit: int = 600) -> str:
+    folded = text.casefold()
+    positions = [folded.find(term.casefold()) for term in terms if term and folded.find(term.casefold()) >= 0]
+    center = min(positions) if positions else 0
+    start = max(0, center - limit // 3)
+    excerpt = text[start:start + limit]
+    return ("…" if start else "") + excerpt + ("…" if start + limit < len(text) else "")
 
 
 def ingest_attachment(filename: str, payload: bytes, notice_id: str, source_url: str, keywords: list[str], exclusions: list[str]) -> ImportResult:
@@ -73,12 +107,16 @@ def ingest_attachment(filename: str, payload: bytes, notice_id: str, source_url:
                 if warning:
                     warnings.append(warning)
         packages = []
+        stable_keys: set[str] = set()
         for block in _candidate_blocks(blocks):
             relevance = evaluate_relevance(block.text, block.text, keywords, exclusions)
             fields = {name: _field(name, block.text) for name in FIELD_PATTERNS}
-            evidence = block.text[:600]
             stable_material = "\n".join((notice_id, fields["tender_no"], fields["package_no"], fields["project_name"], fields["package_name"], block.source_file, block.location))
             stable_key = hashlib.sha256(stable_material.encode("utf-8")).hexdigest()
+            if stable_key in stable_keys:
+                continue
+            stable_keys.add(stable_key)
+            evidence = _evidence_excerpt(block.text, relevance.terms)
             packages.append((digest, stable_key, notice_id.strip(), fields["tender_no"], fields["package_no"], fields["project_name"], fields["package_name"], fields["procurement_scope"], block.source_file, block.location, evidence, ",".join(relevance.terms), relevance.score, now_text()))
         with connect() as db:
             db.execute("DELETE FROM sgcc_packages WHERE document_sha256=?", (digest,))

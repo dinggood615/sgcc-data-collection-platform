@@ -1,6 +1,7 @@
 from io import BytesIO
 
 from openpyxl import Workbook
+from docx import Document
 
 from app.database import connect, init_db
 from app.sgcc.pipeline import ingest_attachment
@@ -46,3 +47,22 @@ def test_identical_attachment_is_not_processed_twice(monkeypatch, tmp_path):
     second = ingest_attachment("采购清单.xlsx", payload, "NOTICE-1", "", ["软件开发"], [])
     assert first.status == "processed"
     assert second.status == "duplicate"
+
+
+def test_word_fields_on_adjacent_paragraphs_are_joined(monkeypatch, tmp_path):
+    monkeypatch.setenv("DATABASE_PATH", str(tmp_path / "platform.sqlite3"))
+    init_db()
+    document = Document()
+    document.add_paragraph("分标编号：SGCC-2026-02")
+    document.add_paragraph("包号：包3")
+    document.add_paragraph("项目名称：统一数据中台建设")
+    document.add_paragraph("服务内容：应用软件开发、数据治理与实施服务")
+    output = BytesIO()
+    document.save(output)
+    result = ingest_attachment("技术规范.docx", output.getvalue(), "NOTICE-2", "", ["软件开发", "数据治理"], [])
+    assert result.matched_count == 1
+    with connect() as db:
+        row = db.execute("SELECT * FROM sgcc_packages WHERE relevance_score>=20").fetchone()
+    assert row["package_no"] == "包3"
+    assert row["project_name"] == "统一数据中台建设"
+    assert "软件开发" in row["evidence"]

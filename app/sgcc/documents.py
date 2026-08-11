@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 import csv
+import os
+import shutil
+import subprocess
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -56,16 +60,49 @@ def _word_blocks(path: Path) -> list[TextBlock]:
     return blocks
 
 
-def _pdf_blocks(path: Path) -> list[TextBlock]:
+def _ocr_pdf_page(page, source_name: str, page_number: int) -> TextBlock | None:
+    executable = shutil.which("tesseract")
+    if not executable:
+        return None
+    with tempfile.TemporaryDirectory(prefix="sgcc-ocr-") as temporary:
+        image_path = Path(temporary) / f"page-{page_number}.png"
+        page.get_pixmap(matrix=__import__("fitz").Matrix(2, 2), alpha=False).save(image_path)
+        completed = subprocess.run(
+            [executable, str(image_path), "stdout", "-l", os.getenv("OCR_LANGUAGES", "chi_sim+eng"), "--psm", "6"],
+            capture_output=True, timeout=45, check=False,
+        )
+        text = _clean(completed.stdout.decode("utf-8", errors="replace"))
+        return TextBlock(text, source_name, f"第 {page_number} 页（OCR）") if text else None
+
+
+def _pdf_blocks(path: Path) -> tuple[list[TextBlock], str]:
     import fitz
 
     blocks: list[TextBlock] = []
+    warnings: list[str] = []
+    ocr_limit = max(0, min(int(os.getenv("OCR_MAX_PAGES", "30")), 100))
     with fitz.open(path) as document:
         for page_number, page in enumerate(document, 1):
             text = _clean(page.get_text("text"))
-            if text:
+            if len(text) >= 30:
                 blocks.append(TextBlock(text, path.name, f"第 {page_number} 页"))
-    return blocks
+                continue
+            if page_number > ocr_limit:
+                warnings.append(f"{path.name} 超过 OCR 页数上限 {ocr_limit}，后续扫描页未识别")
+                continue
+            try:
+                ocr_block = _ocr_pdf_page(page, path.name, page_number)
+                if ocr_block:
+                    blocks.append(ocr_block)
+                elif not shutil.which("tesseract"):
+                    warnings.append("未安装 Tesseract，扫描 PDF 无法 OCR")
+                else:
+                    warnings.append(f"{path.name} 第 {page_number} 页 OCR 未提取到文字")
+            except subprocess.TimeoutExpired:
+                warnings.append(f"{path.name} 第 {page_number} 页 OCR 超时")
+            except Exception as exc:
+                warnings.append(f"{path.name} 第 {page_number} 页 OCR 失败：{type(exc).__name__}")
+    return blocks, "；".join(dict.fromkeys(warnings))
 
 
 def _text_blocks(path: Path) -> list[TextBlock]:
@@ -89,8 +126,8 @@ def parse_document(path: Path) -> tuple[list[TextBlock], str]:
         if suffix == ".docx":
             return _word_blocks(path), ""
         if suffix == ".pdf":
-            blocks = _pdf_blocks(path)
-            return blocks, "" if blocks else "PDF 可能是扫描件，需要 OCR"
+            blocks, warning = _pdf_blocks(path)
+            return blocks, warning if blocks else (warning or "PDF 未提取到可读文本")
         if suffix in {".txt", ".csv"}:
             return _text_blocks(path), ""
         if suffix in {".xls", ".doc", ".ofd"}:
