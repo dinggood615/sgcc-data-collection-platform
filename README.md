@@ -52,6 +52,8 @@ curl -fsSL https://raw.githubusercontent.com/dinggood615/sgcc-data-collection-pl
 curl -fsSL https://raw.githubusercontent.com/dinggood615/sgcc-data-collection-platform/main/update-linux.sh | sudo bash
 ```
 
+更新脚本会自动识别 `sgcc-platform`/兼容旧服务名及实际后端端口；更新前创建 SQLite 一致性备份，更新失败时恢复原代码和服务。
+
 卸载：
 
 ```bash

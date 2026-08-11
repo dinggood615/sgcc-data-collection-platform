@@ -14,8 +14,17 @@ if [ -z "${INSTALL_DIR:-}" ]; then
   fi
 fi
 
-SERVICE_NAME="${SERVICE_NAME:-tender-platform}"
+if [ -z "${SERVICE_NAME:-}" ]; then
+  if systemctl cat sgcc-platform.service >/dev/null 2>&1; then SERVICE_NAME=sgcc-platform
+  else SERVICE_NAME=tender-platform
+  fi
+fi
 SERVICE_USER="${SERVICE_USER:-tenderplatform}"
+if [ -z "${BACKEND_PORT:-}" ]; then
+  service_command="$(systemctl show "$SERVICE_NAME" -p ExecStart --value 2>/dev/null || true)"
+  BACKEND_PORT="$(printf '%s' "$service_command" | sed -nE 's/.*--port[[:space:]]+([0-9]+).*/\1/p')"
+  BACKEND_PORT="${BACKEND_PORT:-8000}"
+fi
 GIT=(git -c "safe.directory=$INSTALL_DIR" -C "$INSTALL_DIR")
 
 [ -f "$INSTALL_DIR/.env" ] || { echo "缺少 $INSTALL_DIR/.env，无法安全更新。" >&2; exit 1; }
@@ -69,7 +78,7 @@ echo "正在更新 Python 依赖和数据库结构……"
 chown -R "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR"
 su -s /bin/bash "$SERVICE_USER" -c "set -a; source '$INSTALL_DIR/.env'; set +a; cd '$INSTALL_DIR'; .venv/bin/python -c 'from app.database import init_db; init_db()'"
 
-for nginx_file in /etc/nginx/sites-available/tender-platform /etc/nginx/conf.d/tender-platform.conf; do
+for nginx_file in /etc/nginx/sites-available/tender-platform /etc/nginx/conf.d/tender-platform.conf /etc/nginx/conf.d/sgcc-platform.conf; do
   if [ -f "$nginx_file" ]; then sed -i -E 's/client_max_body_size[[:space:]]+[0-9]+[mM];/client_max_body_size 110m;/' "$nginx_file"; fi
 done
 nginx -t
@@ -79,7 +88,7 @@ systemctl restart "$SERVICE_NAME"
 echo "正在等待更新后的平台服务启动……"
 health_ok=0
 for attempt in $(seq 1 30); do
-  if curl -fs http://127.0.0.1:8000/healthz >/dev/null 2>&1; then health_ok=1; break; fi
+  if curl -fs "http://127.0.0.1:$BACKEND_PORT/healthz" >/dev/null 2>&1; then health_ok=1; break; fi
   if systemctl is-failed --quiet "$SERVICE_NAME"; then break; fi
   sleep 2
 done
@@ -94,4 +103,4 @@ echo "平台健康检查通过。"
 new_commit="$("${GIT[@]}" rev-parse --short HEAD)"
 update_started=0
 trap - ERR
-echo "更新完成，当前版本：$new_commit"
+echo "更新完成，当前版本：$new_commit（服务：$SERVICE_NAME，后端端口：$BACKEND_PORT）"
