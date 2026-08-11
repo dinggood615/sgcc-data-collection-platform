@@ -10,8 +10,9 @@ REPOSITORY_URL="${1:-https://github.com/dinggood615/sgcc-data-collection-platfor
 INSTALL_DIR="${INSTALL_DIR:-/opt/sgcc-data-collection-platform}"
 SERVICE_USER="tenderplatform"
 PUBLIC_PORT="${PORT:-5555}"
-BACKEND_PORT=8000
-TLS_DIR=/etc/tender-platform/tls
+BACKEND_PORT="${BACKEND_PORT:-8001}"
+SERVICE_NAME="sgcc-platform"
+TLS_DIR=/etc/sgcc-platform/tls
 DOMAIN="${DOMAIN:-}"
 LETSENCRYPT_EMAIL="${LETSENCRYPT_EMAIL:-}"
 
@@ -27,14 +28,14 @@ wait_for_platform() {
       echo "平台后端健康检查通过。"
       return 0
     fi
-    if systemctl is-failed --quiet tender-platform.service; then
-      journalctl -u tender-platform.service -n 40 --no-pager >&2 || true
+    if systemctl is-failed --quiet "$SERVICE_NAME.service"; then
+      journalctl -u "$SERVICE_NAME.service" -n 40 --no-pager >&2 || true
       die "平台服务启动失败，以上是最近的服务日志。"
     fi
     sleep 2
   done
-  systemctl status tender-platform.service --no-pager >&2 || true
-  journalctl -u tender-platform.service -n 40 --no-pager >&2 || true
+  systemctl status "$SERVICE_NAME.service" --no-pager >&2 || true
+  journalctl -u "$SERVICE_NAME.service" -n 40 --no-pager >&2 || true
   die "平台在 60 秒内未通过健康检查，以上是服务状态和最近日志。"
 }
 
@@ -140,10 +141,7 @@ chown -R "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR"
 # prevents a first-request race from creating an empty database file.
 su -s /bin/bash "$SERVICE_USER" -c "set -a; source '$INSTALL_DIR/.env'; set +a; cd '$INSTALL_DIR'; .venv/bin/python -c 'from app.database import init_db; init_db()'"
 # Invoke explicitly with bash: Git mirrors may not preserve executable bits.
-bash "$INSTALL_DIR/install-browser.sh" "$INSTALL_DIR" "$SERVICE_USER"
-systemctl is-active --quiet tender-manual-browser.service || die "可视 Chrome 服务未能启动，请检查 tender-manual-browser.service 日志"
-
-cat >/etc/systemd/system/tender-platform.service <<EOF
+cat >"/etc/systemd/system/$SERVICE_NAME.service" <<EOF
 [Unit]
 Description=招标采集管理平台
 After=network-online.target
@@ -168,15 +166,16 @@ if [ ! -f "$TLS_DIR/cert.pem" ] || [ ! -f "$TLS_DIR/key.pem" ]; then
   chmod 600 "$TLS_DIR/key.pem"
 fi
 if [ -d /etc/nginx/sites-available ]; then
-  NGINX_SITE=/etc/nginx/sites-available/tender-platform
-  NGINX_ENABLED=/etc/nginx/sites-enabled/tender-platform
+  NGINX_SITE=/etc/nginx/sites-available/sgcc-platform
+  NGINX_ENABLED=/etc/nginx/sites-enabled/sgcc-platform
   install -m 644 "$INSTALL_DIR/nginx/tender-platform.conf" "$NGINX_SITE"
   ln -sfn "$NGINX_SITE" "$NGINX_ENABLED"
   rm -f /etc/nginx/sites-enabled/default
 else
-  NGINX_SITE=/etc/nginx/conf.d/tender-platform.conf
+  NGINX_SITE=/etc/nginx/conf.d/sgcc-platform.conf
   install -m 644 "$INSTALL_DIR/nginx/tender-platform.conf" "$NGINX_SITE"
 fi
+sed -i "s|/etc/tender-platform/tls|$TLS_DIR|g;s|127.0.0.1:8000|127.0.0.1:$BACKEND_PORT|g" "$NGINX_SITE"
 # Keep standard HTTPS 443 for Enterprise WeChat.  Avoid duplicate listen
 # directives when the dashboard port itself is configured as 443.
 if [ "$PUBLIC_PORT" != "443" ]; then
@@ -186,10 +185,11 @@ else
 fi
 if [ -n "$DOMAIN" ]; then
   sed -i "s/server_name _;/server_name $DOMAIN;/" "$NGINX_SITE"
+  sed -i "/listen $PUBLIC_PORT ssl;/a\\    listen 443 ssl;" "$NGINX_SITE"
 fi
 nginx -t
 systemctl daemon-reload
-systemctl enable --now tender-platform.service
+systemctl enable --now "$SERVICE_NAME.service"
 systemctl enable nginx.service
 systemctl restart nginx.service
 wait_for_platform
@@ -214,4 +214,4 @@ else
 fi
 verify_https_entry
 echo "完成：访问 https://服务器IP:$PUBLIC_PORT。初始账户 admin/admin，请立即修改。"
-echo "人工验证：在自定义站点卡片点击‘打开此站验证’，无需 SSH 隧道。"
+echo "国网固定站点已自动适配，无需添加站点或人工验证。"
