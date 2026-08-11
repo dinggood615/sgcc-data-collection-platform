@@ -76,7 +76,7 @@ echo "正在更新 Python 依赖和数据库结构……"
 if command -v apt-get >/dev/null 2>&1; then
   conversion_packages=()
   command -v libreoffice >/dev/null 2>&1 || conversion_packages+=(libreoffice-core libreoffice-writer libreoffice-calc)
-  command -v 7zz >/dev/null 2>&1 || conversion_packages+=(7zip)
+  { command -v 7zz >/dev/null 2>&1 || command -v 7z >/dev/null 2>&1; } || conversion_packages+=(7zip)
   command -v unar >/dev/null 2>&1 || conversion_packages+=(unar)
   if [ "${#conversion_packages[@]}" -gt 0 ]; then
     echo "正在补充附件转换工具：${conversion_packages[*]}"
