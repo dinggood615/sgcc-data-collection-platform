@@ -22,7 +22,7 @@ def collect_enabled_sites(target_date: str, send_email: bool = True) -> tuple[in
         return 0, 0, "尚未设置核心关键词，本次未访问采集站点"
     exclusions = parse_terms(setting("exclude_terms"))
     items, notices = [], []
-    sgcc_items, sgcc_notice = collect_sgcc_portal(target_date)
+    sgcc_items, sgcc_notice = collect_sgcc_portal(target_date, keywords, exclusions)
     items.extend(sgcc_items)
     if sgcc_notice:
         notices.append(sgcc_notice)
