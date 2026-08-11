@@ -208,6 +208,7 @@ def reset_platform_state() -> Path:
         db.execute("DELETE FROM sqlite_sequence WHERE name IN ('runs','custom_sites','sgcc_packages')")
         db.execute("DELETE FROM settings")
         db.executemany("INSERT INTO settings(key,value) VALUES(?,?)", ((row["key"], row["value"]) for row in preserved))
+    init_db()
     return rollback
 
 

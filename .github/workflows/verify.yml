@@ -40,7 +40,9 @@ jobs:
           from app.database import connect, init_db, setting
           init_db()
           with connect() as db:
-              for table in ("custom_sites", "keywords", "tenders", "runs", "sgcc_documents", "sgcc_packages"):
+              site = db.execute("SELECT name,url,builtin_code,enabled FROM custom_sites").fetchall()
+              assert len(site) == 1 and site[0]["builtin_code"] == "sgcc_portal" and site[0]["enabled"] == 1
+              for table in ("keywords", "tenders", "runs", "sgcc_documents", "sgcc_packages"):
                   assert db.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0] == 0, table
           for key in ("schedule", "recipient", "smtp_host", "smtp_port", "smtp_user", "smtp_from",
                       "wecom_corp_id", "wecom_callback_token", "wecom_encoding_aes_key",
@@ -95,7 +97,9 @@ jobs:
           with sqlite3.connect(rollback) as backup:
               assert backup.execute("SELECT COUNT(*) FROM tenders").fetchone()[0] == 1
           with connect() as db:
-              for table in ("custom_sites", "keywords", "tenders", "runs", "sgcc_documents", "sgcc_packages"):
+              site = db.execute("SELECT builtin_code,enabled FROM custom_sites").fetchall()
+              assert len(site) == 1 and site[0]["builtin_code"] == "sgcc_portal" and site[0]["enabled"] == 1
+              for table in ("keywords", "tenders", "runs", "sgcc_documents", "sgcc_packages"):
                   assert db.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0] == 0
           assert setting("admin_username") == "keeper"
           assert setting("admin_password", secret=True) == "strong-password"
@@ -152,20 +156,7 @@ jobs:
           assert excluded.score < result.score
           assert parse_terms("保洁外包；食堂服务\n保洁外包") == ["保洁外包", "食堂服务"]
           PY
-      - name: Verify external collector plugin interface
-        run: |
-          export COLLECTOR_PLUGIN_DIR="$RUNNER_TEMP/collector-plugins"
-          mkdir -p "$COLLECTOR_PLUGIN_DIR"
-          cat > "$COLLECTOR_PLUGIN_DIR/example.py" <<'PY'
-          def collect(target_date, enabled_codes, keywords, exclusions):
-              return [{"source": "test", "title": "软件开发服务", "url": "https://example.com/1", "published_date": target_date, "notice_type": "test", "matched_terms": ["软件开发"]}], ""
-          PY
-          python - <<'PY'
-          from app.connectors.plugins import collect_plugins
-          items, notices = collect_plugins("2026-08-10", set(), ["软件开发"], [])
-          assert len(items) == 1 and not notices
-          PY
-      - name: Verify dedicated sites bypass generic collector
+      - name: Verify fixed SGCC collector routing
         run: |
           export DATABASE_PATH="$RUNNER_TEMP/dedicated-routing.sqlite3"
           python - <<'PY'
@@ -176,14 +167,9 @@ jobs:
           init_db()
           with connect() as db:
               db.execute("INSERT INTO keywords(term) VALUES('软件开发')")
-              db.execute("INSERT INTO custom_sites(name,url,enabled,status,builtin_code,created_at) VALUES('专用站点','https://example.com/dedicated',1,'已适配（专用采集器）','dedicated','now')")
-              db.execute("INSERT INTO custom_sites(name,url,enabled,status,created_at) VALUES('通用站点','https://example.com/list',1,'已适配（静态列表）','now')")
-          with patch("app.runner.collect_custom_site", return_value=([], "")) as generic, \
-               patch("app.runner.collect_plugins", return_value=([], [])) as plugins:
+          with patch("app.runner.collect_sgcc_portal", return_value=([], "")) as sgcc:
               collect_enabled_sites("2026-08-09")
-          assert generic.call_count == 1
-          assert generic.call_args.args[0]["builtin_code"] is None
-          assert plugins.call_args.args[1] == {"dedicated"}
+          sgcc.assert_called_once_with("2026-08-09")
           PY
       - name: Verify scheduled email and manual 24-hour delivery rules
         run: |
@@ -206,10 +192,10 @@ jobs:
           set_setting("recipient", "recipient@example.com")
           set_setting("smtp_user", "sender@example.com")
           set_setting("smtp_auth_code", "secret", secret=True)
-          with patch("app.runner.send_report") as send_report:
+          with patch("app.runner.collect_sgcc_portal", return_value=([], "")), patch("app.runner.send_report") as send_report:
               collect_enabled_sites(target, send_email=True)
               assert len(send_report.call_args.args[2]) == 1
-          with patch("app.runner.send_report") as send_report:
+          with patch("app.runner.collect_sgcc_portal", return_value=([], "")), patch("app.runner.send_report") as send_report:
               collect_enabled_sites(target, send_email=False)
               send_report.assert_not_called()
           report, total = build_recent_24h_report()
