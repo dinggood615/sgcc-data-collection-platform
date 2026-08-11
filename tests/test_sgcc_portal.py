@@ -65,4 +65,34 @@ def test_invitation_attachment_respects_access_control():
     item = {"notice_type": "投标邀请书", "source_item_id": "11", "url": "https://example.com"}
     excerpt, warning = sgcc_portal._automatic_attachment_analysis(item, ["软件开发"], [])
     assert excerpt == ""
-    assert "未尝试绕过访问控制" in warning
+    assert warning == "restricted"
+
+
+def test_public_attachment_download_retries_temporary_errors(monkeypatch):
+    calls = []
+
+    def fake_download(notice_id):
+        calls.append(notice_id)
+        if len(calls) < 3:
+            raise TimeoutError("temporary")
+        return "附件.zip", b"payload"
+
+    monkeypatch.setenv("ATTACHMENT_DOWNLOAD_RETRIES", "3")
+    monkeypatch.setattr(sgcc_portal, "_download_public_attachment_once", fake_download)
+    monkeypatch.setattr(sgcc_portal.time, "sleep", lambda _seconds: None)
+    assert sgcc_portal._download_public_attachment("11") == ("附件.zip", b"payload")
+    assert calls == ["11", "11", "11"]
+
+
+def test_restricted_attachments_are_summarized_as_automatically_skipped(monkeypatch):
+    monkeypatch.setattr(sgcc_portal, "_request_page", lambda _page: {
+        "successful": True,
+        "resultValue": {"count": 1, "noteList": [{
+            "noticeId": 12, "title": "受邀项目", "noticePublishTime": "2026-08-10",
+            "doctype": "doci-bid", "noticeType": 100063008,
+        }]},
+    })
+    monkeypatch.setattr(sgcc_portal.time, "sleep", lambda _seconds: None)
+    _items, warning = sgcc_portal.collect_sgcc_portal("2026-08-10", ["项目"], [])
+    assert warning == "1 个受邀权限附件已自动识别并跳过"
+    assert "人工" not in warning

@@ -141,8 +141,8 @@ def ingest_attachment(filename: str, payload: bytes, notice_id: str, source_url:
             db.execute("DELETE FROM sgcc_packages WHERE document_sha256=?", (digest,))
             db.executemany("""INSERT OR REPLACE INTO sgcc_packages(document_sha256,stable_key,notice_id,tender_no,package_no,project_name,package_name,procurement_scope,source_file,source_location,evidence,matched_terms,relevance_score,created_at)
                 VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)""", packages)
-            status = "processed" if blocks else "needs_review"
-            message = "；".join(dict.fromkeys(warnings)) if warnings else ("解析完成" if blocks else "没有提取到可读文本，可能需要 OCR 或格式转换")
+            status = "processed" if blocks else "no_text"
+            message = "；".join(dict.fromkeys(warnings)) if warnings else ("解析完成" if blocks else "自动处理完成：未提取到可读文本，已归类为无文本附件")
             db.execute("UPDATE sgcc_documents SET status=?,message=?,processed_at=? WHERE sha256=?", (status, message, now_text(), digest))
         matched = sum(1 for package in packages if package[-2] >= 20)
         return ImportResult(digest, status, len(packages), matched, tuple(dict.fromkeys(warnings)))

@@ -86,3 +86,14 @@ def test_attachment_documents_are_parsed_in_bounded_parallel_pool(monkeypatch, t
     results = pipeline._parse_paths_parallel(paths)
     assert len(results) == 4
     assert set(seen) == {"0.txt", "1.txt", "2.txt", "3.txt"}
+
+
+def test_unreadable_attachment_is_automatically_classified(monkeypatch, tmp_path):
+    monkeypatch.setenv("DATABASE_PATH", str(tmp_path / "platform.sqlite3"))
+    init_db()
+    result = ingest_attachment("未知格式.bin", b"not-readable", "NOTICE-3", "", ["软件"], [])
+    assert result.status == "no_text"
+    with connect() as db:
+        row = db.execute("SELECT status,message FROM sgcc_documents WHERE sha256=?", (result.sha256,)).fetchone()
+    assert row["status"] == "no_text"
+    assert "自动处理完成" in row["message"]
