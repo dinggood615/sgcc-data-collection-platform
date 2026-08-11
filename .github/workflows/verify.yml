@@ -169,7 +169,7 @@ jobs:
               db.execute("INSERT INTO keywords(term) VALUES('软件开发')")
           with patch("app.runner.collect_sgcc_portal", return_value=([], "")) as sgcc:
               collect_enabled_sites("2026-08-09")
-          sgcc.assert_called_once_with("2026-08-09")
+          sgcc.assert_called_once_with("2026-08-09", ["软件开发"], [])
           PY
       - name: Verify scheduled email and manual 24-hour delivery rules
         run: |
