@@ -46,6 +46,7 @@ curl -fsSL https://raw.githubusercontent.com/dinggood615/sgcc-data-collection-pl
 ```
 
 默认访问 `https://服务器IP:5555`，初始账号为 `admin / admin`，首次登录后请立即修改密码。
+安装过程不会询问域名。需要企业微信回调和受信任 HTTPS 证书时，可在执行命令前显式设置 `DOMAIN` 与可选的 `LETSENCRYPT_EMAIL`。
 
 更新：
 
