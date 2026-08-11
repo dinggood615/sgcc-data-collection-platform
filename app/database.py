@@ -116,6 +116,29 @@ def init_db() -> None:
         if "profile_json" not in columns:
             db.execute("ALTER TABLE custom_sites ADD COLUMN profile_json TEXT NOT NULL DEFAULT ''")
         db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_custom_sites_builtin_code ON custom_sites(builtin_code) WHERE builtin_code IS NOT NULL")
+        # This edition is intentionally single-purpose. Remove generic/custom
+        # sources left by older releases and keep exactly one managed SGCC source.
+        db.execute("DELETE FROM custom_sites WHERE builtin_code IS NULL OR builtin_code<>?", ("sgcc_portal",))
+        db.execute(
+            """INSERT INTO custom_sites(name,url,enabled,engine,status,list_selector,date_pattern,profile_note,profile_json,builtin_code,created_at)
+               VALUES(?,?,?,?,?,?,?,?,?,?,?)
+               ON CONFLICT(url) DO UPDATE SET name=excluded.name,enabled=1,engine=excluded.engine,
+               status=excluded.status,list_selector=excluded.list_selector,profile_note=excluded.profile_note,
+               profile_json=excluded.profile_json,builtin_code=excluded.builtin_code""",
+            (
+                "国家电网招标公告及投标邀请书",
+                "https://ecp.sgcc.com.cn/ecp2.0/portal/#/list/list-spe/2018032600000014_5_2018032700291334",
+                1,
+                "SGCC Public JSON API",
+                "已适配（国网专用接口）",
+                "$.resultValue.noteList",
+                "noticePublishTime",
+                "固定站点；自动按日期分页采集，无需人工验证。",
+                '{"version":1,"mode":"sgcc_portal","menu_id":"2018032700291334","page_size":100}',
+                "sgcc_portal",
+                datetime.now().astimezone().isoformat(timespec="seconds"),
+            ),
+        )
         tender_columns = {row["name"] for row in db.execute("PRAGMA table_info(tenders)")}
         for column, declaration in (
             ("source_item_id", "TEXT NOT NULL DEFAULT ''"),

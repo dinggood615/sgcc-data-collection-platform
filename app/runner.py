@@ -9,8 +9,7 @@ from urllib.request import Request, urlopen
 from datetime import datetime
 from email.message import EmailMessage
 
-from .connectors.custom import collect_custom_site
-from .connectors.plugins import collect_plugins
+from .connectors.sgcc_portal import collect_sgcc_portal
 from .database import connect, setting
 from .emailing import normalize_recipients
 from .matching import evaluate_relevance, parse_terms
@@ -19,24 +18,18 @@ from .matching import evaluate_relevance, parse_terms
 def collect_enabled_sites(target_date: str, send_email: bool = True) -> tuple[int, int, str]:
     with connect() as db:
         keywords = [row["term"] for row in db.execute("SELECT term FROM keywords WHERE enabled=1")]
-        custom_sites = [dict(row) for row in db.execute("SELECT * FROM custom_sites WHERE enabled=1")]
     if not keywords:
         return 0, 0, "尚未设置核心关键词，本次未访问采集站点"
     exclusions = parse_terms(setting("exclude_terms"))
     items, notices = [], []
-    for site in (item for item in custom_sites if not item.get("builtin_code")):
-        batch, warning = collect_custom_site(site, target_date, keywords, exclusions)
-        items.extend(batch)
-        if warning:
-            notices.append(warning)
-    enabled_codes = {site["builtin_code"] for site in custom_sites if site.get("builtin_code")}
-    plugin_items, plugin_notices = collect_plugins(target_date, enabled_codes, keywords, exclusions)
-    items.extend(plugin_items)
-    notices.extend(plugin_notices)
+    sgcc_items, sgcc_notice = collect_sgcc_portal(target_date)
+    items.extend(sgcc_items)
+    if sgcc_notice:
+        notices.append(sgcc_notice)
     ranked_items = []
     for item in items:
         if "relevance_score" not in item:
-            relevance = evaluate_relevance(item["title"], "", keywords, exclusions)
+            relevance = evaluate_relevance(item["title"], item.get("excerpt", ""), keywords, exclusions)
             if relevance.score < 20:
                 continue
             item.update(relevance_score=relevance.score, relevance_level=relevance.level,

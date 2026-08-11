@@ -1,12 +1,12 @@
 # 国网数据采集管理平台
 
-面向国家电网电子商务平台公开招标公告及投标邀请书的专项采集与附件分析系统。项目从[数据采集管理平台](https://github.com/dinggood615/data-collection-management-platform)独立演进，保留站点管理、定时任务、邮件、企业微信、备份迁移和可视浏览器能力，并增加公告附件安全解析、项目/标包拆分、原文证据定位和文件版本去重。
+面向国家电网电子商务平台“招标公告及投标邀请书”的专项采集与附件分析系统。项目固定集成国网站点，不提供自定义站点添加功能；保留定时任务、邮件、企业微信和备份迁移，并增加公告附件安全解析、项目/标包拆分、原文证据定位和文件版本去重。
 
 > 本项目只处理公开信息或管理员通过合法授权渠道取得的文件，不绕过登录、验证码、访问限制、CA、加密压缩包或 `.sgcc` 文件保护。
 
 ## 国网专项流程
 
-1. 采集公开公告编号、标题、发布时间、详情地址和附件元数据。
+1. 通过国网公开 JSON 接口按目标日期逐页采集全部公告编号、标题、发布时间和详情地址。
 2. 对无需登录或验证的公开附件建立下载与 SHA-256 版本记录。
 3. 对需要账号、CA 或官方工具的文件，由管理员合法下载或导出后在网页上传。
 4. 安全解压 ZIP，拒绝路径穿越、符号链接、可执行文件、异常压缩比例、超大文件和加密包。
@@ -17,8 +17,9 @@
 
 ## 当前支持
 
-- Angular/Vue/React 等动态公告页面的可视 Chrome 辅助识别。
-- Scrapling 静态 DOM 自适应和公开 JSON 接口识别。
+- 固定集成[国家电网招标公告及投标邀请书](https://ecp.sgcc.com.cn/ecp2.0/portal/#/list/list-spe/2018032600000014_5_2018032700291334)。
+- 自动使用国网公开 JSON 接口，无需可视 Chrome、人工验证或重新识别。
+- 服务端分页遍历、目标日期停止条件、温和访问间隔、公告 ID 去重和部分失败保留。
 - 国网附件手动导入、文件指纹去重、ZIP 安全解压。
 - Excel 工作表/行、Word 段落/表格、PDF 页码级证据定位；扫描 PDF 自动使用中文 OCR（带页数与超时限制）。
 - 智能标包上下文：自动组合相邻的包号、项目名称、服务范围和全局分标信息，减少字段跨行导致的漏报。
@@ -38,7 +39,7 @@
 
 ## Linux 一键安装
 
-适用于带 systemd 的 Ubuntu、Debian、RHEL/Rocky/AlmaLinux、Fedora、openSUSE 和 Arch Linux。Ubuntu/Debian 安装器同时安装 LibreOffice、Poppler、7-Zip、中文 Tesseract 和可视 Chrome 环境。
+适用于带 systemd 的 Ubuntu、Debian、RHEL/Rocky/AlmaLinux、Fedora、openSUSE 和 Arch Linux。Ubuntu/Debian 安装器同时安装 LibreOffice、Poppler、7-Zip 和中文 Tesseract。固定国网站点使用公开接口，不安装也不依赖可视 Chrome。
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/dinggood615/sgcc-data-collection-platform/main/install-linux.sh | sudo bash
@@ -95,7 +96,7 @@ curl -fsSL https://raw.githubusercontent.com/dinggood615/sgcc-data-collection-pl
 - 数据库默认位于 `/opt/sgcc-data-collection-platform/data/platform.sqlite3`。
 - SMTP 授权码等敏感配置使用 `APP_SECRET` 派生密钥加密。
 - 附件只在隔离临时目录解析，处理完成自动清理；数据库保存文件指纹、状态和结构化结果，不保存上传原件。
-- noVNC 与 Chrome 调试端口不直接暴露公网，由已登录的管理页面代理访问。
+- 国网页面采用前端单页路由，平台只调用其页面自身使用的公开读取接口，不绕过访问控制。
 - 仓库不包含站点账号、邮箱授权码、VPS 密码、Cookie、CA 文件或业务数据。
 
 ## 开发与测试

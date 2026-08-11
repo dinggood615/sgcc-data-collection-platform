@@ -8,7 +8,7 @@ from datetime import date, datetime, timedelta
 from urllib.parse import urlparse
 
 from apscheduler.schedulers.background import BackgroundScheduler
-from fastapi import FastAPI, File, Form, Request, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse, Response
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -196,6 +196,7 @@ def auth_check():
 
 @app.post("/custom-sites")
 def add_custom_site(name: str = Form(...), url: str = Form(...)):
+    raise HTTPException(status_code=404, detail="国网专项版使用固定采集站点")
     try:
         safe_name = validate_site_name(name)
         safe_url = validate_public_url(url)
@@ -214,6 +215,7 @@ def add_custom_site(name: str = Form(...), url: str = Form(...)):
 
 @app.post("/custom-sites/{site_id}/update")
 def update_custom_site(site_id: int, name: str = Form(...), url: str = Form(...)):
+    raise HTTPException(status_code=404, detail="国网专项版不允许修改固定采集站点")
     try:
         safe_name = validate_site_name(name)
         safe_url = validate_public_url(url)
@@ -236,6 +238,7 @@ def update_custom_site(site_id: int, name: str = Form(...), url: str = Form(...)
 
 @app.post("/custom-sites/{site_id}/toggle")
 def toggle_custom_site(site_id: int):
+    raise HTTPException(status_code=404, detail="国网固定采集站点始终启用")
     message = ""
     with connect() as db:
         site = db.execute("SELECT name,status FROM custom_sites WHERE id=?", (site_id,)).fetchone()
@@ -252,6 +255,7 @@ def toggle_custom_site(site_id: int):
 
 @app.post("/custom-sites/{site_id}/profile")
 def reprofile_custom_site(site_id: int):
+    raise HTTPException(status_code=404, detail="国网固定采集站点无需重新识别")
     with connect() as db:
         site = db.execute("SELECT * FROM custom_sites WHERE id=?", (site_id,)).fetchone()
     if not site:
@@ -294,6 +298,7 @@ async def _open_manual_browser(url: str) -> None:
 
 @app.post("/custom-sites/{site_id}/manual-verify")
 def open_site_for_manual_verification(site_id: int):
+    raise HTTPException(status_code=404, detail="国网固定采集站点无需人工验证")
     with connect() as db:
         site = db.execute("SELECT name,url FROM custom_sites WHERE id=?", (site_id,)).fetchone()
     if not site:
@@ -311,6 +316,7 @@ def open_site_for_manual_verification(site_id: int):
 
 @app.post("/custom-sites/{site_id}/delete")
 def delete_custom_site(site_id: int):
+    raise HTTPException(status_code=404, detail="国网固定采集站点不可删除")
     message = ""
     with connect() as db:
         site = db.execute("SELECT name,builtin_code FROM custom_sites WHERE id=?", (site_id,)).fetchone()
