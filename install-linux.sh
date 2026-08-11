@@ -123,9 +123,8 @@ python3 -m venv "$INSTALL_DIR/.venv"
 "$INSTALL_DIR/.venv/bin/pip" install --upgrade pip wheel
 "$INSTALL_DIR/.venv/bin/pip" install -r "$INSTALL_DIR/requirements.txt"
 if [ ! -f "$INSTALL_DIR/.env" ]; then
-  INITIAL_ADMIN_PASSWORD="$(openssl rand -hex 10)"
   cp "$INSTALL_DIR/.env.example" "$INSTALL_DIR/.env"
-  sed -i "s|APP_SECRET=.*|APP_SECRET=$(openssl rand -hex 32)|;s|ADMIN_USERNAME=.*|ADMIN_USERNAME=admin|;s|ADMIN_PASSWORD=.*|ADMIN_PASSWORD=$INITIAL_ADMIN_PASSWORD|;s|DATABASE_PATH=.*|DATABASE_PATH=$INSTALL_DIR/data/platform.sqlite3|;s|SCRAPLING_STORAGE_PATH=.*|SCRAPLING_STORAGE_PATH=$INSTALL_DIR/data/scrapling-selectors.sqlite3|;s|CHROME_CDP_URL=.*|CHROME_CDP_URL=http://127.0.0.1:9222|" "$INSTALL_DIR/.env"
+  sed -i "s|APP_SECRET=.*|APP_SECRET=$(openssl rand -hex 32)|;s|ADMIN_USERNAME=.*|ADMIN_USERNAME=admin|;s|ADMIN_PASSWORD=.*|ADMIN_PASSWORD=admin|;s|DATABASE_PATH=.*|DATABASE_PATH=$INSTALL_DIR/data/platform.sqlite3|;s|SCRAPLING_STORAGE_PATH=.*|SCRAPLING_STORAGE_PATH=$INSTALL_DIR/data/scrapling-selectors.sqlite3|;s|CHROME_CDP_URL=.*|CHROME_CDP_URL=http://127.0.0.1:9222|" "$INSTALL_DIR/.env"
   chmod 600 "$INSTALL_DIR/.env"
 fi
 install -d -o "$SERVICE_USER" -g "$SERVICE_USER" "$INSTALL_DIR/data"
@@ -226,8 +225,6 @@ else
   echo "提示：当前使用自签名证书；企业微信聊天助手需要有效域名 HTTPS 证书。"
 fi
 verify_https_entry
-if [ -n "${INITIAL_ADMIN_PASSWORD:-}" ]; then
-  echo "初始账户：admin / $INITIAL_ADMIN_PASSWORD（请立即妥善保存并在首次登录后修改）"
-fi
+echo "初始账户：admin / admin（请在首次登录后修改）"
 if [ -n "$DOMAIN" ]; then echo "完成：访问 https://$DOMAIN。"; else echo "完成：访问 https://服务器IP:$PUBLIC_PORT。"; fi
 echo "国网固定站点已自动适配，无需添加站点或人工验证。"
