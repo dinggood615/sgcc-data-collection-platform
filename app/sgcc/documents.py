@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import base64
 import os
 import shutil
 import subprocess
@@ -118,6 +119,63 @@ def _text_blocks(path: Path) -> list[TextBlock]:
     return [TextBlock(_clean(line), path.name, f"第 {index} 行") for index, line in enumerate(text.splitlines(), 1) if _clean(line)]
 
 
+def _converted_blocks(original: Path, converted: Path, label: str) -> tuple[list[TextBlock], str]:
+    blocks, warning = parse_document(converted)
+    rewritten = [TextBlock(block.text, original.name, f"{block.location}（由 {label} 转换）") for block in blocks]
+    return rewritten, warning
+
+
+def _convert_legacy_office(path: Path) -> tuple[list[TextBlock], str]:
+    executable = shutil.which("libreoffice") or shutil.which("soffice")
+    if not executable:
+        return [], f"未安装 LibreOffice，无法转换 {path.suffix.casefold()} 文件"
+    target_format = "xlsx" if path.suffix.casefold() == ".xls" else "docx"
+    with tempfile.TemporaryDirectory(prefix="sgcc-office-") as temporary:
+        output_dir = Path(temporary) / "output"
+        profile_dir = Path(temporary) / "profile"
+        output_dir.mkdir()
+        completed = subprocess.run(
+            [
+                executable,
+                "--headless",
+                f"-env:UserInstallation={profile_dir.resolve().as_uri()}",
+                "--convert-to",
+                target_format,
+                "--outdir",
+                str(output_dir),
+                str(path),
+            ],
+            capture_output=True,
+            timeout=120,
+            check=False,
+        )
+        converted = output_dir / f"{path.stem}.{target_format}"
+        if completed.returncode != 0 or not converted.exists():
+            return [], f"{path.name} 经 LibreOffice 转换失败"
+        return _converted_blocks(path, converted, f"{path.suffix.upper()}→{target_format.upper()}")
+
+
+def _convert_ofd(path: Path) -> tuple[list[TextBlock], str]:
+    try:
+        from easyofd.ofd import OFD
+    except ImportError:
+        return [], "未安装 easyofd，无法将 OFD 转换为 PDF"
+    with tempfile.TemporaryDirectory(prefix="sgcc-ofd-") as temporary:
+        converted = Path(temporary) / f"{path.stem}.pdf"
+        converter = OFD()
+        try:
+            converter.read(base64.b64encode(path.read_bytes()).decode("ascii"), save_xml=False)
+            converted.write_bytes(converter.to_pdf())
+        except Exception as exc:
+            return [], f"{path.name} 转换 PDF 失败：{type(exc).__name__}"
+        finally:
+            try:
+                converter.del_data()
+            except Exception:
+                pass
+        return _converted_blocks(path, converted, "OFD→PDF")
+
+
 def parse_document(path: Path) -> tuple[list[TextBlock], str]:
     suffix = path.suffix.casefold()
     try:
@@ -130,8 +188,10 @@ def parse_document(path: Path) -> tuple[list[TextBlock], str]:
             return blocks, warning if blocks else (warning or "PDF 未提取到可读文本")
         if suffix in {".txt", ".csv"}:
             return _text_blocks(path), ""
-        if suffix in {".xls", ".doc", ".ofd"}:
-            return [], f"{suffix} 需要 LibreOffice/OFD 转换后解析"
+        if suffix in {".xls", ".doc"}:
+            return _convert_legacy_office(path)
+        if suffix == ".ofd":
+            return _convert_ofd(path)
         return [], ""
     except Exception as exc:
         return [], f"{path.name} 解析失败：{type(exc).__name__}"

@@ -66,15 +66,19 @@ verify_https_entry() {
 install_packages() {
   if command -v apt-get >/dev/null; then
     apt-get update
-    DEBIAN_FRONTEND=noninteractive apt-get install -y ca-certificates git python3 python3-venv python3-pip build-essential openssl curl nginx libreoffice-core libreoffice-writer libreoffice-calc poppler-utils p7zip-full tesseract-ocr tesseract-ocr-chi-sim
+    DEBIAN_FRONTEND=noninteractive apt-get install -y ca-certificates git python3 python3-venv python3-pip build-essential openssl curl nginx libreoffice-core libreoffice-writer libreoffice-calc poppler-utils 7zip unar tesseract-ocr tesseract-ocr-chi-sim
   elif command -v dnf >/dev/null; then
     dnf install -y ca-certificates git python3 python3-pip gcc gcc-c++ make openssl curl nginx
+    dnf install -y libreoffice-headless libreoffice-writer libreoffice-calc poppler-utils p7zip p7zip-plugins tesseract || echo "警告：部分附件转换工具未安装，请按发行版仓库补充。"
   elif command -v yum >/dev/null; then
     yum install -y ca-certificates git python3 python3-pip gcc gcc-c++ make openssl curl nginx
+    yum install -y libreoffice-headless libreoffice-writer libreoffice-calc poppler-utils p7zip p7zip-plugins tesseract || echo "警告：部分附件转换工具未安装，请按发行版仓库补充。"
   elif command -v zypper >/dev/null; then
     zypper --non-interactive install ca-certificates git python3 python3-pip gcc gcc-c++ make openssl curl nginx
+    zypper --non-interactive install libreoffice poppler-tools p7zip tesseract-ocr || echo "警告：部分附件转换工具未安装，请按发行版仓库补充。"
   elif command -v pacman >/dev/null; then
     pacman -Sy --noconfirm ca-certificates git python python-pip base-devel openssl curl nginx
+    pacman -Sy --noconfirm libreoffice-fresh poppler p7zip tesseract tesseract-data-chi_sim || echo "警告：部分附件转换工具未安装，请按发行版仓库补充。"
   else
     die "未识别的软件包管理器。支持 apt、dnf、yum、zypper、pacman。"
   fi

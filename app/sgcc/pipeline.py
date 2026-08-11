@@ -1,15 +1,17 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import re
 import tempfile
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 
 from app.database import connect, now_text
 from app.matching import evaluate_relevance
 
-from .archive import UnsafeArchive, extract_zip_safely
+from .archive import UnsafeArchive, extract_archive_safely
 from .documents import TextBlock, parse_document
 
 
@@ -77,6 +79,23 @@ def _evidence_excerpt(text: str, terms: tuple[str, ...], limit: int = 600) -> st
     return ("…" if start else "") + excerpt + ("…" if start + limit < len(text) else "")
 
 
+def _parse_paths_parallel(paths: list[Path]) -> list[tuple[list[TextBlock], str]]:
+    """Parse independent extracted files concurrently with a bounded worker pool."""
+    if not paths:
+        return []
+    try:
+        configured = int(os.getenv("ATTACHMENT_PARSE_WORKERS", "0"))
+    except ValueError:
+        configured = 0
+    if configured <= 0:
+        configured = os.cpu_count() or 2
+    workers = max(1, min(configured, len(paths), 8))
+    if workers == 1:
+        return [parse_document(path) for path in paths]
+    with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="sgcc-attachment") as executor:
+        return list(executor.map(parse_document, paths))
+
+
 def ingest_attachment(filename: str, payload: bytes, notice_id: str, source_url: str, keywords: list[str], exclusions: list[str]) -> ImportResult:
     if not payload or len(payload) > MAX_UPLOAD_BYTES:
         raise ValueError("附件为空或超过 100 MB")
@@ -99,10 +118,10 @@ def ingest_attachment(filename: str, payload: bytes, notice_id: str, source_url:
             original = root / safe_name
             original.write_bytes(payload)
             paths = [original]
-            if original.suffix.casefold() == ".zip":
-                paths = extract_zip_safely(original, root / "extracted")
-            for path in paths:
-                parsed, warning = parse_document(path)
+            if original.suffix.casefold() in {".zip", ".rar", ".7z"}:
+                paths = extract_archive_safely(original, root / "extracted")
+            parseable = [path for path in paths if path.suffix.casefold() not in {".zip", ".rar", ".7z"}]
+            for parsed, warning in _parse_paths_parallel(parseable):
                 blocks.extend(parsed)
                 if warning:
                     warnings.append(warning)

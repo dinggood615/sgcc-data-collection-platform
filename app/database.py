@@ -118,6 +118,7 @@ def init_db() -> None:
             FOREIGN KEY(document_sha256) REFERENCES sgcc_documents(sha256)
         );
         CREATE INDEX IF NOT EXISTS idx_sgcc_packages_document ON sgcc_packages(document_sha256);
+        CREATE INDEX IF NOT EXISTS idx_sgcc_packages_notice ON sgcc_packages(notice_id);
         CREATE INDEX IF NOT EXISTS idx_sgcc_documents_notice ON sgcc_documents(notice_id);
         """)
         columns = {row["name"] for row in db.execute("PRAGMA table_info(custom_sites)")}

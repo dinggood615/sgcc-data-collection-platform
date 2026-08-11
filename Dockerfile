@@ -3,7 +3,7 @@ LABEL org.opencontainers.image.source="https://github.com/dinggood615/sgcc-data-
 WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-    libreoffice-core libreoffice-writer libreoffice-calc poppler-utils p7zip-full \
+    libreoffice-core libreoffice-writer libreoffice-calc poppler-utils 7zip unar \
     tesseract-ocr tesseract-ocr-chi-sim && rm -rf /var/lib/apt/lists/*
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
