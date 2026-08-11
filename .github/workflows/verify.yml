@@ -43,7 +43,8 @@ jobs:
           with connect() as db:
               site = db.execute("SELECT name,url,builtin_code,enabled FROM custom_sites").fetchall()
               assert len(site) == 1 and site[0]["builtin_code"] == "sgcc_portal" and site[0]["enabled"] == 1
-              for table in ("keywords", "tenders", "runs", "sgcc_documents", "sgcc_packages"):
+              assert db.execute("SELECT COUNT(*) FROM keywords").fetchone()[0] > 30
+              for table in ("tenders", "runs", "sgcc_documents", "sgcc_packages"):
                   assert db.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0] == 0, table
           for key in ("schedule", "recipient", "smtp_host", "smtp_port", "smtp_user", "smtp_from",
                       "wecom_corp_id", "wecom_callback_token", "wecom_encoding_aes_key",
@@ -100,7 +101,8 @@ jobs:
           with connect() as db:
               site = db.execute("SELECT builtin_code,enabled FROM custom_sites").fetchall()
               assert len(site) == 1 and site[0]["builtin_code"] == "sgcc_portal" and site[0]["enabled"] == 1
-              for table in ("keywords", "tenders", "runs", "sgcc_documents", "sgcc_packages"):
+              assert db.execute("SELECT COUNT(*) FROM keywords").fetchone()[0] > 30
+              for table in ("tenders", "runs", "sgcc_documents", "sgcc_packages"):
                   assert db.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0] == 0
           assert setting("admin_username") == "keeper"
           assert setting("admin_password", secret=True) == "strong-password"

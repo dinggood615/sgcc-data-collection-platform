@@ -359,6 +359,13 @@ def toggle_keyword(term: str):
     return RedirectResponse("/", 303)
 
 
+@app.post("/keywords/clear")
+def clear_keywords():
+    with connect() as db:
+        db.execute("DELETE FROM keywords")
+    return RedirectResponse("/#filters", 303)
+
+
 @app.post("/matching-rules")
 def save_matching_rules(exclude_terms: str = Form("")):
     set_setting("exclude_terms", ",".join(parse_terms(exclude_terms)))
