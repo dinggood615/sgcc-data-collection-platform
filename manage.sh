@@ -15,11 +15,7 @@ case "$choice" in
   5)
     read -r -p "确认删除 $INSTALL_DIR 及其采集数据？输入 DELETE 确认: " confirm
     [ "$confirm" = "DELETE" ] || { echo "已取消"; exit 0; }
-    systemctl disable --now tender-platform.service tender-manual-browser.service 2>/dev/null || true
-    rm -f /etc/systemd/system/tender-platform.service /etc/systemd/system/tender-manual-browser.service
-    rm -rf "$INSTALL_DIR"
-    systemctl daemon-reload
-    echo "已卸载平台与本地数据。"
+    INSTALL_DIR="$INSTALL_DIR" bash uninstall-linux.sh --yes
     ;;
   *) echo "无效选择"; exit 1 ;;
 esac

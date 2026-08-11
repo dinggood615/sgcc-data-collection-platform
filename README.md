@@ -54,10 +54,17 @@ curl -fsSL https://raw.githubusercontent.com/dinggood615/sgcc-data-collection-pl
 
 更新脚本会自动识别 `sgcc-platform`/兼容旧服务名及实际后端端口；更新前创建 SQLite 一致性备份，更新失败时恢复原代码和服务。
 
-卸载：
+一键卸载（会删除程序、数据库、浏览器会话和国网专项配置，不可恢复）：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/dinggood615/sgcc-data-collection-platform/main/uninstall-linux.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/dinggood615/sgcc-data-collection-platform/main/uninstall-linux.sh | sudo bash -s -- --yes
+```
+
+如需输入 `DELETE` 二次确认，请先下载再执行，避免 `curl` 管道占用标准输入：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/dinggood615/sgcc-data-collection-platform/main/uninstall-linux.sh -o /tmp/uninstall-sgcc.sh
+sudo bash /tmp/uninstall-sgcc.sh
 ```
 
 ## Docker 一键管理
