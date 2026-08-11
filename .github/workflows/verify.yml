@@ -30,6 +30,7 @@ jobs:
         run: |
           cp .env.example .env
           DATA_DIR="$RUNNER_TEMP/platform-data" PLATFORM_PORT=18000 docker compose config --quiet
+          DOMAIN=sgcc.example.com PLATFORM_BIND=127.0.0.1 DATA_DIR="$RUNNER_TEMP/platform-data" docker compose -f docker-compose.yml -f docker-compose.tls.yml config --quiet
           rm -f .env
       - name: Verify clean first-run state
         run: |

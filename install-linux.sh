@@ -16,6 +16,17 @@ TLS_DIR=/etc/sgcc-platform/tls
 DOMAIN="${DOMAIN:-}"
 LETSENCRYPT_EMAIL="${LETSENCRYPT_EMAIL:-}"
 
+prompt_domain() {
+  [ -n "$DOMAIN" ] && return
+  [ -r /dev/tty ] || return
+  printf '请输入平台域名（例如 sgcc.example.com；直接回车则使用自签名证书）: ' >/dev/tty
+  read -r DOMAIN </dev/tty
+  if [ -n "$DOMAIN" ] && [ -z "$LETSENCRYPT_EMAIL" ]; then
+    printf '请输入证书通知邮箱（可直接回车跳过）: ' >/dev/tty
+    read -r LETSENCRYPT_EMAIL </dev/tty
+  fi
+}
+
 die() { echo "错误：$*" >&2; exit 1; }
 [ "${EUID}" -eq 0 ] || die "请使用 sudo 运行"
 [ -d /run/systemd/system ] || die "原生安装需要 systemd；容器环境请使用 Docker 安装。"
@@ -101,8 +112,9 @@ git_repo() {
   fi
 }
 
-install_packages
+prompt_domain
 valid_domain || die "DOMAIN 格式不正确；请只填写域名，例如 tender.example.com。"
+install_packages
 id "$SERVICE_USER" >/dev/null 2>&1 || useradd --system --create-home --shell /usr/sbin/nologin "$SERVICE_USER"
 if [ -d "$INSTALL_DIR/.git" ]; then git_repo -C "$INSTALL_DIR" pull --ff-only; else git_repo clone "$REPOSITORY_URL" "$INSTALL_DIR"; fi
 find "$INSTALL_DIR/app" -type f \( -name '*.py' -o -name '*.html' -o -name '*.css' \) -print0 |
@@ -111,8 +123,9 @@ python3 -m venv "$INSTALL_DIR/.venv"
 "$INSTALL_DIR/.venv/bin/pip" install --upgrade pip wheel
 "$INSTALL_DIR/.venv/bin/pip" install -r "$INSTALL_DIR/requirements.txt"
 if [ ! -f "$INSTALL_DIR/.env" ]; then
+  INITIAL_ADMIN_PASSWORD="$(openssl rand -hex 10)"
   cp "$INSTALL_DIR/.env.example" "$INSTALL_DIR/.env"
-  sed -i "s|APP_SECRET=.*|APP_SECRET=$(openssl rand -hex 32)|;s|ADMIN_USERNAME=.*|ADMIN_USERNAME=admin|;s|ADMIN_PASSWORD=.*|ADMIN_PASSWORD=admin|;s|DATABASE_PATH=.*|DATABASE_PATH=$INSTALL_DIR/data/platform.sqlite3|;s|SCRAPLING_STORAGE_PATH=.*|SCRAPLING_STORAGE_PATH=$INSTALL_DIR/data/scrapling-selectors.sqlite3|;s|CHROME_CDP_URL=.*|CHROME_CDP_URL=http://127.0.0.1:9222|" "$INSTALL_DIR/.env"
+  sed -i "s|APP_SECRET=.*|APP_SECRET=$(openssl rand -hex 32)|;s|ADMIN_USERNAME=.*|ADMIN_USERNAME=admin|;s|ADMIN_PASSWORD=.*|ADMIN_PASSWORD=$INITIAL_ADMIN_PASSWORD|;s|DATABASE_PATH=.*|DATABASE_PATH=$INSTALL_DIR/data/platform.sqlite3|;s|SCRAPLING_STORAGE_PATH=.*|SCRAPLING_STORAGE_PATH=$INSTALL_DIR/data/scrapling-selectors.sqlite3|;s|CHROME_CDP_URL=.*|CHROME_CDP_URL=http://127.0.0.1:9222|" "$INSTALL_DIR/.env"
   chmod 600 "$INSTALL_DIR/.env"
 fi
 install -d -o "$SERVICE_USER" -g "$SERVICE_USER" "$INSTALL_DIR/data"
@@ -161,11 +174,14 @@ sed -i "s|/etc/tender-platform/tls|$TLS_DIR|g;s|127.0.0.1:8000|127.0.0.1:$BACKEN
 if [ "$PUBLIC_PORT" != "443" ]; then
   sed -i "s/listen 5555 ssl;/listen $PUBLIC_PORT ssl;/" "$NGINX_SITE"
 else
-  sed -i '/listen 5555 ssl;/d' "$NGINX_SITE"
+  sed -i "s/listen 5555 ssl;/listen 443 ssl;/" "$NGINX_SITE"
 fi
 if [ -n "$DOMAIN" ]; then
   sed -i "s/server_name _;/server_name $DOMAIN;/" "$NGINX_SITE"
-  sed -i "/listen $PUBLIC_PORT ssl;/a\\    listen 443 ssl;" "$NGINX_SITE"
+  sed -i "/server_name $DOMAIN;/a\\    add_header Strict-Transport-Security \"max-age=31536000\" always;" "$NGINX_SITE"
+  if [ "$PUBLIC_PORT" != "443" ]; then
+    sed -i "/listen $PUBLIC_PORT ssl;/a\\    listen 443 ssl;" "$NGINX_SITE"
+  fi
 fi
 nginx -t
 systemctl daemon-reload
@@ -186,6 +202,23 @@ if [ -n "$DOMAIN" ]; then
   fi
   ln -sfn "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" "$TLS_DIR/cert.pem"
   ln -sfn "/etc/letsencrypt/live/$DOMAIN/privkey.pem" "$TLS_DIR/key.pem"
+  install -d -m 755 /etc/letsencrypt/renewal-hooks/deploy
+  cat > /etc/letsencrypt/renewal-hooks/deploy/sgcc-platform-nginx <<'EOF'
+#!/usr/bin/env sh
+set -eu
+nginx -t
+systemctl reload nginx.service
+EOF
+  chmod 755 /etc/letsencrypt/renewal-hooks/deploy/sgcc-platform-nginx
+  cat >>"$NGINX_SITE" <<EOF
+
+server {
+    listen 80;
+    server_name $DOMAIN;
+    return 301 https://\$host\$request_uri;
+}
+EOF
+  nginx -t
   systemctl start nginx.service
   systemctl reload nginx.service
   echo "企业微信回调地址：https://$DOMAIN/wecom/callback"
@@ -193,5 +226,8 @@ else
   echo "提示：当前使用自签名证书；企业微信聊天助手需要有效域名 HTTPS 证书。"
 fi
 verify_https_entry
-echo "完成：访问 https://服务器IP:$PUBLIC_PORT。初始账户 admin/admin，请立即修改。"
+if [ -n "${INITIAL_ADMIN_PASSWORD:-}" ]; then
+  echo "初始账户：admin / $INITIAL_ADMIN_PASSWORD（请立即妥善保存并在首次登录后修改）"
+fi
+if [ -n "$DOMAIN" ]; then echo "完成：访问 https://$DOMAIN。"; else echo "完成：访问 https://服务器IP:$PUBLIC_PORT。"; fi
 echo "国网固定站点已自动适配，无需添加站点或人工验证。"

@@ -5,7 +5,7 @@ services:
     init: true
     env_file: .env
     ports:
-      - "${PLATFORM_PORT:-8000}:8000"
+      - "${PLATFORM_BIND:-0.0.0.0}:${PLATFORM_PORT:-8000}:8000"
     volumes:
       - "${DATA_DIR:-./data}:/data"
     healthcheck:
