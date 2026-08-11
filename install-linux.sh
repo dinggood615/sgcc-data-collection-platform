@@ -93,25 +93,6 @@ open_tls_firewall_ports() {
   fi
 }
 
-prompt_tls_settings() {
-  # The installer is commonly executed through `curl | bash`, where stdin is
-  # occupied by the script itself.  Read from the controlling terminal so the
-  # command remains short while users can still enter their domain interactively.
-  [ -n "$DOMAIN" ] && return
-  [ -r /dev/tty ] || return
-  local enable_tls=""
-  printf '是否现在配置域名 HTTPS 证书（企业微信需要）？[y/N]: ' >/dev/tty
-  read -r enable_tls </dev/tty || true
-  case "$enable_tls" in
-    y|Y|yes|YES)
-      printf '请输入域名（例如 tx.example.com）: ' >/dev/tty
-      read -r DOMAIN </dev/tty || true
-      printf '请输入证书通知邮箱（可留空）: ' >/dev/tty
-      read -r LETSENCRYPT_EMAIL </dev/tty || true
-      ;;
-  esac
-}
-
 git_repo() {
   if [ -n "${GITHUB_TOKEN:-}" ]; then
     git -c http.extraHeader="Authorization: Bearer ${GITHUB_TOKEN}" "$@"
@@ -121,7 +102,6 @@ git_repo() {
 }
 
 install_packages
-prompt_tls_settings
 valid_domain || die "DOMAIN 格式不正确；请只填写域名，例如 tender.example.com。"
 id "$SERVICE_USER" >/dev/null 2>&1 || useradd --system --create-home --shell /usr/sbin/nologin "$SERVICE_USER"
 if [ -d "$INSTALL_DIR/.git" ]; then git_repo -C "$INSTALL_DIR" pull --ff-only; else git_repo clone "$REPOSITORY_URL" "$INSTALL_DIR"; fi
