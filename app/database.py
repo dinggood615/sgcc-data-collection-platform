@@ -127,6 +127,10 @@ def init_db() -> None:
         if "profile_json" not in columns:
             db.execute("ALTER TABLE custom_sites ADD COLUMN profile_json TEXT NOT NULL DEFAULT ''")
         db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_custom_sites_builtin_code ON custom_sites(builtin_code) WHERE builtin_code IS NOT NULL")
+        # Older releases used needs_review for every document without extracted
+        # text. That state implied a manual task even when automatic processing
+        # had completed, so normalize existing rows to the new machine category.
+        db.execute("UPDATE sgcc_documents SET status='no_text' WHERE status='needs_review'")
         # This edition is intentionally single-purpose. Remove generic/custom
         # sources left by older releases and keep exactly one managed SGCC source.
         db.execute("DELETE FROM custom_sites WHERE builtin_code IS NULL OR builtin_code<>?", ("sgcc_portal",))
