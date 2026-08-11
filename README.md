@@ -46,8 +46,15 @@
 curl -fsSL https://raw.githubusercontent.com/dinggood615/sgcc-data-collection-platform/main/install-linux.sh | sudo bash
 ```
 
-默认访问 `https://服务器IP:5555`，初始账号为 `admin / admin`，首次登录后请立即修改密码。
-安装过程不会询问域名。需要企业微信回调和受信任 HTTPS 证书时，可在执行命令前显式设置 `DOMAIN` 与可选的 `LETSENCRYPT_EMAIL`。
+默认访问 `https://服务器IP:5555`。首次安装会在终端显示随机生成的管理员密码，请立即妥善保存并在首次登录后修改。
+安装过程会提示输入域名和可选的证书通知邮箱；直接回车可继续使用自签名证书。需要企业微信回调和受信任 HTTPS 证书时，请先将域名 A/AAAA 记录解析到服务器，并放行 80、443 端口，也可以通过环境变量进行无人值守安装：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/dinggood615/sgcc-data-collection-platform/main/install-linux.sh -o /tmp/install-sgcc.sh
+sudo DOMAIN=sgcc.example.com LETSENCRYPT_EMAIL=admin@example.com bash /tmp/install-sgcc.sh
+```
+
+安装器会申请 Let's Encrypt 证书、启用 HTTP 到 HTTPS 跳转，并安装续期后的 Nginx 自动重载钩子。请将示例域名和邮箱替换为你的真实信息。
 
 更新：
 
@@ -82,6 +89,8 @@ curl -fsSL https://raw.githubusercontent.com/dinggood615/sgcc-data-collection-pl
 # 卸载（交互确认）
 curl -fsSL https://raw.githubusercontent.com/dinggood615/sgcc-data-collection-platform/main/install-docker.sh | sh -s -- uninstall
 ```
+
+交互式安装会提示输入域名。填写后，Docker Compose 会启动 Caddy，在 80/443 端口自动申请和续期 HTTPS 证书；直接回车则保留 `http://设备IP:8000` 访问。使用域名前，请先将 DNS 解析到设备并放行 80、443 端口。无人值守安装也可以预设 `DOMAIN=sgcc.example.com`。
 
 ## 使用国网附件自动分析
 
