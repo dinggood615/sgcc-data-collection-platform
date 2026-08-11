@@ -23,6 +23,14 @@ class DeploymentConfigTests(unittest.TestCase):
         self.assertIn("docker-compose.tls.yml", installer)
         self.assertIn("prompt_domain", installer)
 
+    def test_installers_use_requested_default_credentials(self):
+        linux = (ROOT / "install-linux.sh").read_text(encoding="utf-8")
+        docker = (ROOT / "install-docker.sh").read_text(encoding="utf-8")
+        legacy = (ROOT / "install.sh").read_text(encoding="utf-8")
+        self.assertIn("ADMIN_PASSWORD=admin", linux)
+        self.assertIn("write_env_value ADMIN_PASSWORD admin", docker)
+        self.assertIn("ADMIN_PASSWORD=admin", legacy)
+
 
 if __name__ == "__main__":
     unittest.main()

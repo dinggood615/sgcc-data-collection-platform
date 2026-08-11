@@ -46,7 +46,7 @@
 curl -fsSL https://raw.githubusercontent.com/dinggood615/sgcc-data-collection-platform/main/install-linux.sh | sudo bash
 ```
 
-默认访问 `https://服务器IP:5555`。首次安装会在终端显示随机生成的管理员密码，请立即妥善保存并在首次登录后修改。
+默认访问 `https://服务器IP:5555`，初始账号和密码均为 `admin`，请在首次登录后修改。
 安装过程会提示输入域名和可选的证书通知邮箱；直接回车可继续使用自签名证书。需要企业微信回调和受信任 HTTPS 证书时，请先将域名 A/AAAA 记录解析到服务器，并放行 80、443 端口，也可以通过环境变量进行无人值守安装：
 
 ```bash

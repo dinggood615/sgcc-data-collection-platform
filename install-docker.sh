@@ -123,11 +123,10 @@ write_env_value() {
 prepare_environment() {
   mkdir -p "$DATA_DIR"
   if [ ! -f "$INSTALL_DIR/.env" ]; then
-    INITIAL_ADMIN_PASSWORD="$(random_hex)"
     cp "$INSTALL_DIR/.env.example" "$INSTALL_DIR/.env"
     write_env_value APP_SECRET "$(random_hex)"
     write_env_value ADMIN_USERNAME admin
-    write_env_value ADMIN_PASSWORD "$INITIAL_ADMIN_PASSWORD"
+    write_env_value ADMIN_PASSWORD admin
   fi
   write_env_value DATABASE_PATH /data/platform.sqlite3
   write_env_value SCRAPLING_STORAGE_PATH /data/scrapling-selectors.sqlite3
@@ -181,9 +180,7 @@ install_or_update() {
     echo "访问：http://设备IP:$PLATFORM_PORT"
   fi
   echo "数据目录：$DATA_DIR"
-  if [ -n "${INITIAL_ADMIN_PASSWORD:-}" ]; then
-    echo "初始账户：admin / $INITIAL_ADMIN_PASSWORD（请立即妥善保存并在首次登录后修改）"
-  fi
+  echo "初始账户：admin / admin（请在首次登录后修改）"
 }
 
 uninstall_platform() {
