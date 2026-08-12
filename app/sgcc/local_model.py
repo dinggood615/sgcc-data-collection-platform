@@ -23,9 +23,10 @@ def enabled() -> bool:
 
 
 def _profile(rule_score: int, fields_missing: bool) -> tuple[str, str, str]:
+    dispatcher = os.getenv("LOCAL_MODEL_DISPATCHER_ENDPOINT", "http://127.0.0.1:8083").strip()
     if rule_score < 60 and not fields_missing:
-        return "local-llm-quick.service", os.getenv("LOCAL_MODEL_QUICK_ENDPOINT", "http://127.0.0.1:8081"), "qwen3-0.6b"
-    return "local-llm-summary.service", os.getenv("LOCAL_MODEL_SUMMARY_ENDPOINT", "http://127.0.0.1:8082"), "qwen3-1.7b"
+        return "local-llm-quick.service", dispatcher or os.getenv("LOCAL_MODEL_QUICK_ENDPOINT", "http://127.0.0.1:8081"), "qwen3-0.6b"
+    return "local-llm-summary.service", dispatcher or os.getenv("LOCAL_MODEL_SUMMARY_ENDPOINT", "http://127.0.0.1:8082"), "qwen3-1.7b"
 
 
 def _wait_ready(endpoint: str, seconds: int = 90) -> bool:
@@ -45,6 +46,8 @@ def _ensure_service(service: str, endpoint: str) -> bool:
             return True
     except Exception:
         pass
+    if endpoint == os.getenv("LOCAL_MODEL_DISPATCHER_ENDPOINT", "http://127.0.0.1:8083").strip():
+        return False
     if os.name != "posix" or not os.path.exists("/run/systemd/system"):
         return False
     completed = subprocess.run(["sudo", "-n", "systemctl", "start", "--no-block", service], capture_output=True, timeout=10, check=False)

@@ -92,4 +92,30 @@ cat >/etc/sudoers.d/sgcc-local-model <<EOF
 $SERVICE_USER ALL=(root) NOPASSWD: /bin/systemctl start --no-block local-llm-quick.service, /bin/systemctl start --no-block local-llm-summary.service, /usr/bin/systemctl start --no-block local-llm-quick.service, /usr/bin/systemctl start --no-block local-llm-summary.service
 EOF
 chmod 440 /etc/sudoers.d/sgcc-local-model
+install -m 755 "$(dirname "$0")/local-model-dispatcher.py" /opt/local-llm/dispatcher.py
+cat >/etc/systemd/system/local-model-dispatcher.service <<EOF
+[Unit]
+Description=Shared local model dispatcher for data collection platforms
+After=network-online.target
+Conflicts=local-llm-quick.service local-llm-summary.service
+
+[Service]
+User=$SERVICE_USER
+Group=$SERVICE_USER
+WorkingDirectory=/opt/local-llm
+ExecStart=/usr/bin/python3 /opt/local-llm/dispatcher.py
+Restart=on-failure
+RestartSec=5
+MemoryHigh=1900M
+MemoryMax=2300M
+CPUQuota=250%
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
+EOF
+systemctl daemon-reload
+systemctl disable --now local-llm-quick.service local-llm-summary.service >/dev/null 2>&1 || true
+systemctl enable --now local-model-dispatcher.service
 echo "本地 Qwen3 混合分析模型已部署为按需服务。"
