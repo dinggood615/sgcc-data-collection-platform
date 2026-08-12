@@ -113,6 +113,11 @@ def init_db() -> None:
             source_location TEXT NOT NULL DEFAULT '',
             evidence TEXT NOT NULL DEFAULT '',
             matched_terms TEXT NOT NULL DEFAULT '',
+            rule_score INTEGER NOT NULL DEFAULT 0,
+            model_name TEXT NOT NULL DEFAULT '',
+            model_confidence INTEGER NOT NULL DEFAULT 0,
+            model_reason TEXT NOT NULL DEFAULT '',
+            model_category TEXT NOT NULL DEFAULT '',
             relevance_score INTEGER NOT NULL DEFAULT 0,
             created_at TEXT NOT NULL,
             FOREIGN KEY(document_sha256) REFERENCES sgcc_documents(sha256)
@@ -131,6 +136,14 @@ def init_db() -> None:
         # text. That state implied a manual task even when automatic processing
         # had completed, so normalize existing rows to the new machine category.
         db.execute("UPDATE sgcc_documents SET status='no_text' WHERE status='needs_review'")
+        package_columns = {row["name"] for row in db.execute("PRAGMA table_info(sgcc_packages)")}
+        for name, definition in (
+            ("rule_score", "INTEGER NOT NULL DEFAULT 0"), ("model_name", "TEXT NOT NULL DEFAULT ''"),
+            ("model_confidence", "INTEGER NOT NULL DEFAULT 0"), ("model_reason", "TEXT NOT NULL DEFAULT ''"),
+            ("model_category", "TEXT NOT NULL DEFAULT ''"),
+        ):
+            if name not in package_columns:
+                db.execute(f"ALTER TABLE sgcc_packages ADD COLUMN {name} {definition}")
         # This edition is intentionally single-purpose. Remove generic/custom
         # sources left by older releases and keep exactly one managed SGCC source.
         db.execute("DELETE FROM custom_sites WHERE builtin_code IS NULL OR builtin_code<>?", ("sgcc_portal",))
