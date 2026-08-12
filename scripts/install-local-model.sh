@@ -2,6 +2,15 @@
 set -euo pipefail
 
 SERVICE_USER="${SERVICE_USER:-tenderplatform}"
+if ! id "$SERVICE_USER" >/dev/null 2>&1; then
+  existing_dispatcher_user="$(systemctl show local-model-dispatcher.service -p User --value 2>/dev/null || true)"
+  if [ -n "$existing_dispatcher_user" ] && id "$existing_dispatcher_user" >/dev/null 2>&1; then
+    SERVICE_USER="$existing_dispatcher_user"
+  else
+    echo "本地模型服务账号 $SERVICE_USER 不存在，已跳过模型部署。"
+    exit 0
+  fi
+fi
 LLAMA_DIR="${LLAMA_DIR:-/opt/llama.cpp}"
 MODEL_DIR="${MODEL_DIR:-/opt/local-llm/models}"
 INSTALL_LOCAL_MODELS="${INSTALL_LOCAL_MODELS:-1}"
