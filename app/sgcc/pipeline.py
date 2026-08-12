@@ -13,6 +13,7 @@ from app.matching import evaluate_relevance
 
 from .archive import UnsafeArchive, extract_archive_safely
 from .documents import TextBlock, parse_document
+from .local_model import combined_score, review_candidate
 
 
 MAX_UPLOAD_BYTES = 100 * 1024 * 1024
@@ -127,20 +128,26 @@ def ingest_attachment(filename: str, payload: bytes, notice_id: str, source_url:
                     warnings.append(warning)
         packages = []
         stable_keys: set[str] = set()
+        model_budget = max(0, min(int(os.getenv("LOCAL_MODEL_MAX_REVIEWS", "12")), 50))
         for block in _candidate_blocks(blocks):
             relevance = evaluate_relevance(block.text, block.text, keywords, exclusions)
             fields = {name: _field(name, block.text) for name in FIELD_PATTERNS}
+            model_review = None
+            if model_budget and 20 <= relevance.score < 80:
+                model_budget -= 1
+                model_review = review_candidate(block.text, relevance.score, not fields["project_name"] or not fields["package_no"])
+            final_score = combined_score(relevance.score, model_review)
             stable_material = "\n".join((notice_id, fields["tender_no"], fields["package_no"], fields["project_name"], fields["package_name"], block.source_file, block.location))
             stable_key = hashlib.sha256(stable_material.encode("utf-8")).hexdigest()
             if stable_key in stable_keys:
                 continue
             stable_keys.add(stable_key)
             evidence = _evidence_excerpt(block.text, relevance.terms)
-            packages.append((digest, stable_key, notice_id.strip(), fields["tender_no"], fields["package_no"], fields["project_name"], fields["package_name"], fields["procurement_scope"], block.source_file, block.location, evidence, ",".join(relevance.terms), relevance.score, now_text()))
+            packages.append((digest, stable_key, notice_id.strip(), fields["tender_no"], fields["package_no"], fields["project_name"], fields["package_name"], fields["procurement_scope"], block.source_file, block.location, evidence, ",".join(relevance.terms), relevance.score, model_review.model if model_review else "", model_review.confidence if model_review else 0, model_review.reason if model_review else "", model_review.category if model_review else "", final_score, now_text()))
         with connect() as db:
             db.execute("DELETE FROM sgcc_packages WHERE document_sha256=?", (digest,))
-            db.executemany("""INSERT OR REPLACE INTO sgcc_packages(document_sha256,stable_key,notice_id,tender_no,package_no,project_name,package_name,procurement_scope,source_file,source_location,evidence,matched_terms,relevance_score,created_at)
-                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)""", packages)
+            db.executemany("""INSERT OR REPLACE INTO sgcc_packages(document_sha256,stable_key,notice_id,tender_no,package_no,project_name,package_name,procurement_scope,source_file,source_location,evidence,matched_terms,rule_score,model_name,model_confidence,model_reason,model_category,relevance_score,created_at)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""", packages)
             status = "processed" if blocks else "no_text"
             message = "；".join(dict.fromkeys(warnings)) if warnings else ("解析完成" if blocks else "自动处理完成：未提取到可读文本，已归类为无文本附件")
             db.execute("UPDATE sgcc_documents SET status=?,message=?,processed_at=? WHERE sha256=?", (status, message, now_text(), digest))

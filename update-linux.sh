@@ -87,6 +87,7 @@ fi
 "$INSTALL_DIR/.venv/bin/pip" install --upgrade pip wheel
 "$INSTALL_DIR/.venv/bin/pip" install -r "$INSTALL_DIR/requirements.txt"
 chown -R "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR"
+bash "$INSTALL_DIR/scripts/install-local-model.sh" || echo "警告：本地模型更新失败，平台将继续使用规则/OCR模式。"
 su -s /bin/bash "$SERVICE_USER" -c "set -a; source '$INSTALL_DIR/.env'; set +a; cd '$INSTALL_DIR'; .venv/bin/python -c 'from app.database import init_db; init_db()'"
 
 for nginx_file in /etc/nginx/sites-available/tender-platform /etc/nginx/conf.d/tender-platform.conf /etc/nginx/conf.d/sgcc-platform.conf; do
