@@ -15,6 +15,9 @@ SERVICE_NAME="sgcc-platform"
 TLS_DIR=/etc/sgcc-platform/tls
 DOMAIN="${DOMAIN:-}"
 LETSENCRYPT_EMAIL="${LETSENCRYPT_EMAIL:-}"
+# Set REVERSE_PROXY=external when this VPS already has Nginx, Caddy, a panel,
+# or another proxy that owns its certificates and public HTTPS ports.
+REVERSE_PROXY="${REVERSE_PROXY:-builtin}"
 
 prompt_domain() {
   [ -n "$DOMAIN" ] && return
@@ -64,20 +67,22 @@ verify_https_entry() {
 }
 
 install_packages() {
+  web_server_package=""
+  [ "$REVERSE_PROXY" = builtin ] && web_server_package="nginx"
   if command -v apt-get >/dev/null; then
     apt-get update
-    DEBIAN_FRONTEND=noninteractive apt-get install -y ca-certificates git python3 python3-venv python3-pip build-essential openssl curl sudo nginx libreoffice-core libreoffice-writer libreoffice-calc poppler-utils 7zip unar tesseract-ocr tesseract-ocr-chi-sim
+    DEBIAN_FRONTEND=noninteractive apt-get install -y ca-certificates git python3 python3-venv python3-pip build-essential openssl curl sudo $web_server_package libreoffice-core libreoffice-writer libreoffice-calc poppler-utils 7zip unar tesseract-ocr tesseract-ocr-chi-sim
   elif command -v dnf >/dev/null; then
-    dnf install -y ca-certificates git python3 python3-pip gcc gcc-c++ make openssl curl sudo nginx
+    dnf install -y ca-certificates git python3 python3-pip gcc gcc-c++ make openssl curl sudo $web_server_package
     dnf install -y libreoffice-headless libreoffice-writer libreoffice-calc poppler-utils p7zip p7zip-plugins tesseract || echo "警告：部分附件转换工具未安装，请按发行版仓库补充。"
   elif command -v yum >/dev/null; then
-    yum install -y ca-certificates git python3 python3-pip gcc gcc-c++ make openssl curl sudo nginx
+    yum install -y ca-certificates git python3 python3-pip gcc gcc-c++ make openssl curl sudo $web_server_package
     yum install -y libreoffice-headless libreoffice-writer libreoffice-calc poppler-utils p7zip p7zip-plugins tesseract || echo "警告：部分附件转换工具未安装，请按发行版仓库补充。"
   elif command -v zypper >/dev/null; then
-    zypper --non-interactive install ca-certificates git python3 python3-pip gcc gcc-c++ make openssl curl sudo nginx
+    zypper --non-interactive install ca-certificates git python3 python3-pip gcc gcc-c++ make openssl curl sudo $web_server_package
     zypper --non-interactive install libreoffice poppler-tools p7zip tesseract-ocr || echo "警告：部分附件转换工具未安装，请按发行版仓库补充。"
   elif command -v pacman >/dev/null; then
-    pacman -Sy --noconfirm ca-certificates git python python-pip base-devel openssl curl sudo nginx
+    pacman -Sy --noconfirm ca-certificates git python python-pip base-devel openssl curl sudo $web_server_package
     pacman -Sy --noconfirm libreoffice-fresh poppler p7zip tesseract tesseract-data-chi_sim || echo "警告：部分附件转换工具未安装，请按发行版仓库补充。"
   else
     die "未识别的软件包管理器。支持 apt、dnf、yum、zypper、pacman。"
@@ -99,6 +104,10 @@ valid_domain() {
   [ -z "$DOMAIN" ] || printf '%s' "$DOMAIN" | grep -Eq '^[A-Za-z0-9]([A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$'
 }
 
+valid_reverse_proxy() {
+  [ "$REVERSE_PROXY" = builtin ] || [ "$REVERSE_PROXY" = external ]
+}
+
 open_tls_firewall_ports() {
   # Ubuntu/Debian deployments commonly use UFW.  Opening these ports here
   # prevents a successful DNS update from still failing the ACME HTTP check.
@@ -118,6 +127,7 @@ git_repo() {
 
 prompt_domain
 valid_domain || die "DOMAIN 格式不正确；请只填写域名，例如 tender.example.com。"
+valid_reverse_proxy || die "REVERSE_PROXY 仅支持 builtin 或 external。"
 install_packages
 id "$SERVICE_USER" >/dev/null 2>&1 || useradd --system --create-home --shell /usr/sbin/nologin "$SERVICE_USER"
 if [ -d "$INSTALL_DIR/.git" ]; then git_repo -C "$INSTALL_DIR" pull --ff-only; else git_repo clone "$REPOSITORY_URL" "$INSTALL_DIR"; fi
@@ -157,6 +167,7 @@ RestartSec=5
 WantedBy=multi-user.target
 EOF
 
+if [ "$REVERSE_PROXY" = builtin ]; then
 install -d -m 700 "$TLS_DIR"
 if [ ! -f "$TLS_DIR/cert.pem" ] || [ ! -f "$TLS_DIR/key.pem" ]; then
   openssl req -x509 -newkey rsa:2048 -sha256 -nodes -days 3650 -subj "/CN=$(hostname -f 2>/dev/null || hostname)" -keyout "$TLS_DIR/key.pem" -out "$TLS_DIR/cert.pem"
@@ -230,6 +241,13 @@ else
   echo "提示：当前使用自签名证书；企业微信聊天助手需要有效域名 HTTPS 证书。"
 fi
 verify_https_entry
+else
+  systemctl daemon-reload
+  systemctl enable --now "$SERVICE_NAME.service"
+  wait_for_platform
+  echo "已使用外部反向代理模式：未修改 Nginx、证书或 80/443 端口。"
+  echo "请在现有反向代理中将 $DOMAIN 转发至 http://127.0.0.1:$BACKEND_PORT，并由该反向代理管理 HTTPS 证书。"
+fi
 echo "初始账户：admin / admin（请在首次登录后修改）"
-if [ -n "$DOMAIN" ]; then echo "完成：访问 https://$DOMAIN。"; else echo "完成：访问 https://服务器IP:$PUBLIC_PORT。"; fi
+if [ "$REVERSE_PROXY" = external ] && [ -n "$DOMAIN" ]; then echo "完成：反向代理配置后访问 https://$DOMAIN。"; elif [ -n "$DOMAIN" ]; then echo "完成：访问 https://$DOMAIN。"; else echo "完成：访问 https://服务器IP:$PUBLIC_PORT。"; fi
 echo "国网固定站点已自动适配，无需添加站点或人工验证。"

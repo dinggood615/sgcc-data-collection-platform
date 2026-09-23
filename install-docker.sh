@@ -12,7 +12,7 @@ case "$ACTION" in
 esac
 if [ "$ACTION" = "--help" ] || [ "$ACTION" = "help" ]; then
   echo "用法: install-docker.sh {install|update|uninstall|status} [--yes]"
-  echo "环境变量: INSTALL_DIR DATA_DIR PLATFORM_PORT DOMAIN TZ BRANCH DELETE_DATA GITHUB_TOKEN"
+  echo "环境变量: INSTALL_DIR DATA_DIR PLATFORM_PORT DOMAIN TLS_MODE TZ BRANCH DELETE_DATA GITHUB_TOKEN"
   exit 0
 fi
 AUTO_CONFIRM="${2:-}"
@@ -22,6 +22,9 @@ PLATFORM_PORT="${PLATFORM_PORT:-8000}"
 TZ="${TZ:-Asia/Shanghai}"
 PROJECT_NAME="${COMPOSE_PROJECT_NAME:-sgcc-data-collection-platform}"
 DOMAIN="${DOMAIN:-}"
+# TLS_MODE=external leaves HTTPS and certificates to an existing host proxy.
+# TLS_MODE=builtin (the legacy default) starts Caddy on 80/443.
+TLS_MODE="${TLS_MODE:-builtin}"
 
 detect_platform() {
   if [ -f /etc/synoinfo.conf ]; then echo synology
@@ -67,9 +70,18 @@ else die "未找到 Docker Compose；请安装 Compose v2 插件或 docker-compo
 fi
 compose() {
   compose_files="-f docker-compose.yml"
-  if [ -n "$DOMAIN" ]; then compose_files="$compose_files -f docker-compose.tls.yml"; fi
+  if [ -n "$DOMAIN" ] && [ "$TLS_MODE" = builtin ]; then compose_files="$compose_files -f docker-compose.tls.yml"; fi
   if [ "$COMPOSE_MODE" = v2 ]; then (cd "$INSTALL_DIR" && docker compose -p "$PROJECT_NAME" $compose_files "$@")
   else (cd "$INSTALL_DIR" && docker-compose -p "$PROJECT_NAME" $compose_files "$@")
+  fi
+}
+
+remove_builtin_tls_proxy() {
+  [ "$TLS_MODE" = external ] || return 0
+  if [ "$COMPOSE_MODE" = v2 ]; then
+    (cd "$INSTALL_DIR" && docker compose -p "$PROJECT_NAME" -f docker-compose.yml -f docker-compose.tls.yml rm -sf caddy) || true
+  else
+    (cd "$INSTALL_DIR" && docker-compose -p "$PROJECT_NAME" -f docker-compose.yml -f docker-compose.tls.yml rm -sf caddy) || true
   fi
 }
 
@@ -83,6 +95,10 @@ prompt_domain() {
 
 valid_domain() {
   [ -z "$DOMAIN" ] || printf '%s' "$DOMAIN" | grep -Eq '^[A-Za-z0-9]([A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$'
+}
+
+valid_tls_mode() {
+  [ "$TLS_MODE" = builtin ] || [ "$TLS_MODE" = external ]
 }
 
 random_hex() {
@@ -169,13 +185,22 @@ install_or_update() {
   download_source
   prompt_domain
   valid_domain || die "DOMAIN 格式不正确；请只填写域名，例如 sgcc.example.com。"
+  valid_tls_mode || die "TLS_MODE 仅支持 builtin 或 external。"
   prepare_environment
   cd "$INSTALL_DIR"
+  # A prior built-in TLS installation has a Caddy container that is absent
+  # from the external-mode compose file, so remove it explicitly on migration.
+  remove_builtin_tls_proxy
   compose up -d --build --remove-orphans
   wait_healthy
   echo "完成：平台=$PLATFORM，架构=$(uname -m)，Compose=$COMPOSE_MODE"
   if [ -n "$DOMAIN" ]; then
-    echo "访问：https://$DOMAIN（请确认 DNS 已指向本机并放行 80、443）"
+    if [ "$TLS_MODE" = external ]; then
+      echo "已使用外部反向代理模式：未启动 Caddy，未占用 80/443，未申请或管理证书。"
+      echo "请将现有反向代理的 $DOMAIN 转发至 http://127.0.0.1:$PLATFORM_PORT。"
+    else
+      echo "访问：https://$DOMAIN（请确认 DNS 已指向本机并放行 80、443）"
+    fi
   else
     echo "访问：http://设备IP:$PLATFORM_PORT"
   fi
