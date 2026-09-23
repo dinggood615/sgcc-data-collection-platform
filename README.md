@@ -32,7 +32,7 @@
 - 多平台共用的本机模型调度器统一串行化推理、互斥切换 0.6B/1.7B、缓存相同请求并在空闲后卸载模型，避免国网与新闻采集任务争抢端口和内存；接口仅监听 `127.0.0.1:8083`。
 - 关键词、同义表达、业务对象与服务动作组合评分以及排除词降权。
 - 首次启动内置并覆盖为信息化、数字化、软件实施、系统集成、运维及人力外包初筛词库；支持一键清除后自行维护。
-- SQLite 去重、邮件日报、企业微信助手、数据库备份与完整迁移。
+- SQLite 去重、邮件日报、企业微信群机器人推送、数据库备份与完整迁移。
 - Linux 原生安装及 Docker/群晖/飞牛 OS/OpenWrt 容器环境。
 
 ## 暂不自动处理
@@ -52,34 +52,7 @@
 curl -fsSL https://raw.githubusercontent.com/dinggood615/sgcc-data-collection-platform/main/install-linux.sh | sudo bash
 ```
 
-默认访问 `https://服务器IP:5555`，初始账号和密码均为 `admin`，请在首次登录后修改。
-安装过程会提示输入域名和可选的证书通知邮箱；直接回车可继续使用自签名证书。需要企业微信回调和受信任 HTTPS 证书时，请先将域名 A/AAAA 记录解析到服务器，并放行 80、443 端口，也可以通过环境变量进行无人值守安装：
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/dinggood615/sgcc-data-collection-platform/main/install-linux.sh -o /tmp/install-sgcc.sh
-sudo DOMAIN=sgcc.example.com LETSENCRYPT_EMAIL=admin@example.com bash /tmp/install-sgcc.sh
-```
-
-安装器会申请 Let's Encrypt 证书、启用 HTTP 到 HTTPS 跳转，并安装续期后的 Nginx 自动重载钩子。请将示例域名和邮箱替换为你的真实信息。
-
-### 与 VPS 既有证书/网站共存
-
-如果 VPS 已由 Nginx、Caddy、宝塔或其他面板占用 80/443 并管理证书，请不要让本项目申请第二套证书或接管公网端口。使用外部反向代理模式，平台只监听 `127.0.0.1:8001`，不会停止、重载或修改既有 Nginx：
-
-    curl -fsSL https://raw.githubusercontent.com/dinggood615/sgcc-data-collection-platform/main/install-linux.sh -o /tmp/install-sgcc.sh
-    sudo DOMAIN=sgcc.example.com REVERSE_PROXY=external bash /tmp/install-sgcc.sh
-
-在现有 HTTPS 虚拟主机中，为 `sgcc.example.com` 添加反向代理到 `http://127.0.0.1:8001`，并保留原有证书及续期配置。Nginx 可使用：
-
-```nginx
-location / {
-    proxy_pass http://127.0.0.1:8001;
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto https;
-}
-```
+默认访问 `http://服务器IP:5555`，初始账号和密码均为 `admin`，请在首次登录后修改。安装器不会安装或修改 Nginx/Caddy，不申请证书，不占用 80/443，也不配置反向代理。若端口已被占用，可自行指定端口：`curl -fsSL https://raw.githubusercontent.com/dinggood615/sgcc-data-collection-platform/main/install-linux.sh | sudo PORT=5566 bash`。
 
 更新：
 
@@ -115,13 +88,7 @@ curl -fsSL https://raw.githubusercontent.com/dinggood615/sgcc-data-collection-pl
 curl -fsSL https://raw.githubusercontent.com/dinggood615/sgcc-data-collection-platform/main/install-docker.sh | sh -s -- uninstall
 ```
 
-交互式安装会提示输入域名。填写后，Docker Compose 会启动 Caddy，在 80/443 端口自动申请和续期 HTTPS 证书；直接回车则保留 `http://设备IP:8000` 访问。使用域名前，请先将 DNS 解析到设备并放行 80、443 端口。无人值守安装也可以预设 `DOMAIN=sgcc.example.com`。
-
-若 VPS 已有反向代理和证书，Docker 安装应使用 `TLS_MODE=external`，避免启动 Caddy、占用 80/443 或创建另一套证书：
-
-    curl -fsSL https://raw.githubusercontent.com/dinggood615/sgcc-data-collection-platform/main/install-docker.sh | DOMAIN=sgcc.example.com TLS_MODE=external sh -s -- install
-
-然后在现有反向代理中将该域名转发至 `http://127.0.0.1:8000`。如已将容器端口改为 `PLATFORM_PORT`，请使用对应端口。
+Docker 默认访问 `http://设备IP:8000`；不启动 Caddy、不申请证书、不占用 80/443，也不配置反向代理。可通过 `PLATFORM_PORT` 指定其他端口。
 
 ## 使用国网附件自动分析
 

@@ -12,7 +12,7 @@ case "$ACTION" in
 esac
 if [ "$ACTION" = "--help" ] || [ "$ACTION" = "help" ]; then
   echo "用法: install-docker.sh {install|update|uninstall|status} [--yes]"
-  echo "环境变量: INSTALL_DIR DATA_DIR PLATFORM_PORT DOMAIN TLS_MODE TZ BRANCH DELETE_DATA GITHUB_TOKEN"
+  echo "环境变量: INSTALL_DIR DATA_DIR PLATFORM_PORT TZ BRANCH DELETE_DATA GITHUB_TOKEN"
   exit 0
 fi
 AUTO_CONFIRM="${2:-}"
@@ -21,10 +21,6 @@ BRANCH="${BRANCH:-main}"
 PLATFORM_PORT="${PLATFORM_PORT:-8000}"
 TZ="${TZ:-Asia/Shanghai}"
 PROJECT_NAME="${COMPOSE_PROJECT_NAME:-sgcc-data-collection-platform}"
-DOMAIN="${DOMAIN:-}"
-# TLS_MODE=external leaves HTTPS and certificates to an existing host proxy.
-# TLS_MODE=builtin (the legacy default) starts Caddy on 80/443.
-TLS_MODE="${TLS_MODE:-builtin}"
 
 detect_platform() {
   if [ -f /etc/synoinfo.conf ]; then echo synology
@@ -43,9 +39,6 @@ if [ -z "${INSTALL_DIR:-}" ]; then
   esac
 fi
 DATA_DIR="${DATA_DIR:-$INSTALL_DIR/data}"
-if [ -z "$DOMAIN" ] && [ -f "$INSTALL_DIR/.env" ]; then
-  DOMAIN="$(sed -n 's/^DOMAIN=//p' "$INSTALL_DIR/.env" | tail -n 1)"
-fi
 
 die() { echo "错误：$*" >&2; exit 1; }
 need() { command -v "$1" >/dev/null 2>&1 || die "缺少命令：$1"; }
@@ -69,36 +62,9 @@ elif command -v docker-compose >/dev/null 2>&1 && docker-compose version >/dev/n
 else die "未找到 Docker Compose；请安装 Compose v2 插件或 docker-compose。"
 fi
 compose() {
-  compose_files="-f docker-compose.yml"
-  if [ -n "$DOMAIN" ] && [ "$TLS_MODE" = builtin ]; then compose_files="$compose_files -f docker-compose.tls.yml"; fi
-  if [ "$COMPOSE_MODE" = v2 ]; then (cd "$INSTALL_DIR" && docker compose -p "$PROJECT_NAME" $compose_files "$@")
-  else (cd "$INSTALL_DIR" && docker-compose -p "$PROJECT_NAME" $compose_files "$@")
+  if [ "$COMPOSE_MODE" = v2 ]; then (cd "$INSTALL_DIR" && docker compose -p "$PROJECT_NAME" -f docker-compose.yml "$@")
+  else (cd "$INSTALL_DIR" && docker-compose -p "$PROJECT_NAME" -f docker-compose.yml "$@")
   fi
-}
-
-remove_builtin_tls_proxy() {
-  [ "$TLS_MODE" = external ] || return 0
-  if [ "$COMPOSE_MODE" = v2 ]; then
-    (cd "$INSTALL_DIR" && docker compose -p "$PROJECT_NAME" -f docker-compose.yml -f docker-compose.tls.yml rm -sf caddy) || true
-  else
-    (cd "$INSTALL_DIR" && docker-compose -p "$PROJECT_NAME" -f docker-compose.yml -f docker-compose.tls.yml rm -sf caddy) || true
-  fi
-}
-
-prompt_domain() {
-  [ "$ACTION" = install ] || return
-  [ -n "$DOMAIN" ] && return
-  [ -r /dev/tty ] || return
-  printf '请输入平台域名（例如 sgcc.example.com；直接回车则保持 HTTP 访问）: ' >/dev/tty
-  read -r DOMAIN </dev/tty
-}
-
-valid_domain() {
-  [ -z "$DOMAIN" ] || printf '%s' "$DOMAIN" | grep -Eq '^[A-Za-z0-9]([A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$'
-}
-
-valid_tls_mode() {
-  [ "$TLS_MODE" = builtin ] || [ "$TLS_MODE" = external ]
 }
 
 random_hex() {
@@ -148,8 +114,7 @@ prepare_environment() {
   write_env_value SCRAPLING_STORAGE_PATH /data/scrapling-selectors.sqlite3
   write_env_value DATA_DIR "$DATA_DIR"
   write_env_value PLATFORM_PORT "$PLATFORM_PORT"
-  write_env_value DOMAIN "$DOMAIN"
-  if [ -n "$DOMAIN" ]; then write_env_value PLATFORM_BIND 127.0.0.1; else write_env_value PLATFORM_BIND 0.0.0.0; fi
+  write_env_value PLATFORM_BIND 0.0.0.0
   write_env_value TZ "$TZ"
   write_env_value CHROME_CDP_URL ""
   chmod 600 "$INSTALL_DIR/.env" 2>/dev/null || true
@@ -183,27 +148,13 @@ install_or_update() {
   fi
   [ "$ACTION" != update ] || backup_before_update
   download_source
-  prompt_domain
-  valid_domain || die "DOMAIN 格式不正确；请只填写域名，例如 sgcc.example.com。"
-  valid_tls_mode || die "TLS_MODE 仅支持 builtin 或 external。"
   prepare_environment
   cd "$INSTALL_DIR"
-  # A prior built-in TLS installation has a Caddy container that is absent
-  # from the external-mode compose file, so remove it explicitly on migration.
-  remove_builtin_tls_proxy
   compose up -d --build --remove-orphans
   wait_healthy
   echo "完成：平台=$PLATFORM，架构=$(uname -m)，Compose=$COMPOSE_MODE"
-  if [ -n "$DOMAIN" ]; then
-    if [ "$TLS_MODE" = external ]; then
-      echo "已使用外部反向代理模式：未启动 Caddy，未占用 80/443，未申请或管理证书。"
-      echo "请将现有反向代理的 $DOMAIN 转发至 http://127.0.0.1:$PLATFORM_PORT。"
-    else
-      echo "访问：https://$DOMAIN（请确认 DNS 已指向本机并放行 80、443）"
-    fi
-  else
-    echo "访问：http://设备IP:$PLATFORM_PORT"
-  fi
+  echo "访问：http://设备IP:$PLATFORM_PORT"
+  echo "提示：Docker 安装不包含 HTTPS、证书、Caddy 或反向代理。"
   echo "数据目录：$DATA_DIR"
   echo "初始账户：admin / admin（请在首次登录后修改）"
 }

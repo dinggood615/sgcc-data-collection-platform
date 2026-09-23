@@ -18,9 +18,6 @@ from cryptography.fernet import Fernet, InvalidToken
 MIGRATION_SECRET_KEYS = (
     "admin_password",
     "smtp_auth_code",
-    "wecom_corp_id",
-    "wecom_callback_token",
-    "wecom_encoding_aes_key",
     "wecom_webhook",
 )
 MIGRATION_MAX_BYTES = 100 * 1024 * 1024
@@ -187,11 +184,6 @@ def init_db() -> None:
             ("smtp_port", os.getenv("SMTP_PORT", "")),
             ("smtp_user", os.getenv("SMTP_USER", "")),
             ("smtp_from", os.getenv("SMTP_FROM", "")),
-            ("wecom_corp_id", os.getenv("WECOM_CORP_ID", "")),
-            ("wecom_callback_token", os.getenv("WECOM_CALLBACK_TOKEN", "")),
-            ("wecom_encoding_aes_key", os.getenv("WECOM_ENCODING_AES_KEY", "")),
-            ("wecom_admin_users", os.getenv("WECOM_ADMIN_USERS", "")),
-            ("wecom_public_url", os.getenv("WECOM_PUBLIC_URL", "")),
             ("wecom_webhook", os.getenv("WECOM_WEBHOOK", "")),
             ("wecom_push_enabled", os.getenv("WECOM_PUSH_ENABLED", "0")),
             ("wecom_push_message", ""),

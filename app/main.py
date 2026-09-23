@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-import base64
 import asyncio
 import os
 import secrets
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from urllib.parse import urlparse
 
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -45,7 +44,7 @@ def has_valid_session(request: Request, username: str) -> bool:
 @app.middleware("http")
 async def require_admin(request: Request, call_next):
     """Keep the dashboard private even when Docker publishes port 8000."""
-    if request.url.path.startswith("/static/") or request.url.path in {"/healthz", "/wecom/callback"}:
+    if request.url.path.startswith("/static/") or request.url.path == "/healthz":
         response = await call_next(request)
         return add_security_headers(response)
     configured = setting("admin_password", os.getenv("ADMIN_PASSWORD", "admin"), secret=True)
@@ -62,12 +61,12 @@ async def require_admin(request: Request, call_next):
         return add_security_headers(response)
     response = await call_next(request)
     if basic_ok:
-        response.set_cookie(SESSION_COOKIE, session_serializer().dumps(username), max_age=SESSION_TTL_SECONDS, httponly=True, secure=True, samesite="strict", path="/")
+        response.set_cookie(SESSION_COOKIE, session_serializer().dumps(username), max_age=SESSION_TTL_SECONDS, httponly=True, secure=False, samesite="strict", path="/")
     return add_security_headers(response)
 
 
 def add_security_headers(response: Response) -> Response:
-    """Apply a safe baseline even when the app is reached without Nginx."""
+    """Apply a safe baseline for direct HTTP deployments."""
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
     response.headers.setdefault("X-Frame-Options", "DENY")
     response.headers.setdefault("Referrer-Policy", "no-referrer")
@@ -135,13 +134,9 @@ def dashboard_context() -> dict:
             "last_backup": setting("last_backup"), "backup_message": setting("backup_message"),
             "migration_message": setting("migration_message"),
             "sgcc_message": setting("sgcc_message"),
-            "wecom_message": setting("wecom_message"),
             "wecom_push_message": setting("wecom_push_message"),
             "wecom_webhook_configured": bool(setting("wecom_webhook", secret=True)),
-            "wecom_push_enabled": setting("wecom_push_enabled", "0") == "1",
-            "wecom_callback_url": _wecom_callback_url(),
-            "wecom_callback_token_value": setting("wecom_callback_token", secret=True),
-            "wecom_encoding_aes_key_value": setting("wecom_encoding_aes_key", secret=True)}
+            "wecom_push_enabled": setting("wecom_push_enabled", "0") == "1"}
 
 
 @app.on_event("startup")
@@ -206,12 +201,6 @@ async def import_sgcc_attachment(
     except Exception as exc:
         set_setting("sgcc_message", f"附件处理失败：{type(exc).__name__}")
     return RedirectResponse("/#sgcc", 303)
-
-
-@app.get("/_internal/auth-check", status_code=204)
-def auth_check():
-    """Nginx auth_request target for the embedded manual-verification page."""
-    return None
 
 
 @app.post("/custom-sites")
@@ -468,11 +457,6 @@ def reset_platform(confirm_reset: str = Form("")):
         return RedirectResponse("/?reset=failed#system", 303)
 
 
-def _wecom_callback_url() -> str:
-    public_url = setting("wecom_public_url", "").rstrip("/")
-    return f"{public_url}/wecom/callback" if public_url else ""
-
-
 def _validate_wecom_webhook(value: str) -> str:
     """Accept only Enterprise WeChat robot webhooks, never arbitrary outbound URLs."""
     parsed = urlparse(value.strip())
@@ -489,7 +473,7 @@ def save_wecom_push_settings(webhook: str = Form(""), enabled: str = Form("0")):
         if webhook.strip():
             set_setting("wecom_webhook", _validate_wecom_webhook(webhook), secret=True)
         set_setting("wecom_push_enabled", "0")
-        set_setting("wecom_push_message", "企业微信已设为手动模式。请向企业微信助手发送“24”。")
+        set_setting("wecom_push_message", "企业微信机器人已保存。可使用“测试群机器人”确认连通性。")
     except ValueError as exc:
         set_setting("wecom_push_message", str(exc))
     return RedirectResponse("/", 303)
@@ -509,149 +493,6 @@ def test_wecom_push():
         except Exception as exc:
             set_setting("wecom_push_message", f"测试发送失败：{type(exc).__name__}")
     return RedirectResponse("/", 303)
-
-
-def _new_wecom_aes_key() -> str:
-    """Enterprise WeChat requires a 43-character base64 key without padding."""
-    return base64.b64encode(secrets.token_bytes(32)).decode().rstrip("=")
-
-
-def _wecom_crypto():
-    from wechatpy.enterprise.crypto import WeChatCrypto
-
-    corp_id = setting("wecom_corp_id", secret=True)
-    token = setting("wecom_callback_token", secret=True)
-    aes_key = setting("wecom_encoding_aes_key", secret=True)
-    if not all((corp_id, token, aes_key)):
-        raise RuntimeError("企业微信配置不完整")
-    return WeChatCrypto(token, aes_key, corp_id)
-
-
-def _wecom_sender_allowed(user_id: str) -> bool:
-    allowed = {item.strip() for item in setting("wecom_admin_users", "").replace("，", ",").split(",") if item.strip()}
-    return bool(allowed) and user_id in allowed
-
-
-def build_recent_24h_report(limit: int = 12) -> tuple[str, int]:
-    cutoff = (datetime.now().astimezone() - timedelta(hours=24)).isoformat(timespec="seconds")
-    with connect() as db:
-        total = db.execute("SELECT COUNT(*) FROM tenders WHERE first_seen_at>=?", (cutoff,)).fetchone()[0]
-        rows = db.execute(
-            "SELECT title,url,source,relevance_score,relevance_level FROM tenders WHERE first_seen_at>=? ORDER BY relevance_score DESC,first_seen_at DESC LIMIT ?",
-            (cutoff, max(1, min(limit, 30))),
-        ).fetchall()
-    lines = ["数据采集平台｜最近24小时", f"共入库 {total} 条相关信息。"]
-    for row in rows:
-        level = row["relevance_level"] or "相关"
-        lines.extend(("", f"[{level} {row['relevance_score']}分] {row['title'][:100]}", f"来源：{row['source']}", row["url"]))
-    if total > len(rows):
-        lines.extend(("", f"另有 {total - len(rows)} 条，请登录平台查看。"))
-    if not rows:
-        lines.append("最近24小时暂无新入库结果。")
-    return "\n".join(lines), total
-
-
-def run_assistant_command(message: str) -> str:
-    """A small allow-list of safe platform operations for chat assistants."""
-    text = message.strip().lower()
-    if any(word in text for word in ("状态", "健康", "status", "health")):
-        with connect() as db:
-            enabled = db.execute("SELECT COUNT(*) FROM custom_sites WHERE enabled=1").fetchone()[0]
-            latest = db.execute("SELECT status,started_at FROM runs ORDER BY id DESC LIMIT 1").fetchone()
-        recent = f"最近任务：{latest['status']}（{latest['started_at']}）" if latest else "尚无运行记录"
-        return f"平台在线，已启用采集站点 {enabled} 个。{recent}。"
-    if text == "24" or any(word in text for word in ("推送24小时", "推送", "24小时", "过去24小时")):
-        from .runner import send_wecom_robot_message
-
-        report, total = build_recent_24h_report()
-        webhook = setting("wecom_webhook", secret=True)
-        if webhook:
-            send_wecom_robot_message(webhook, report)
-            return f"已手动推送最近24小时数据，共 {total} 条。"
-        return report[:1800]
-    if any(word in text for word in ("采集", "抓取", "collect")):
-        scheduler.add_job(run_collection, args=[False], id="manual-run", replace_existing=True)
-        return "已提交一次手动采集任务；结果会入库但不会发送邮件，请稍后查看“最近运行”。"
-    if any(word in text for word in ("最新", "结果", "latest")):
-        with connect() as db:
-            rows = db.execute("SELECT title FROM tenders ORDER BY first_seen_at DESC LIMIT 3").fetchall()
-        return "最近采集结果：" + ("；".join(row["title"][:70] for row in rows) if rows else "暂无入库结果。")
-    if any(word in text for word in ("备份", "backup")):
-        target = backup_database(int(setting("backup_retention_days", "14")))
-        return f"数据库备份已创建：{target.name}。"
-    return "支持的指令：24、状态、立即采集、最新结果、备份。"
-
-
-@app.post("/wecom/quick-settings")
-def save_wecom_quick_settings(corp_id: str = Form(""), public_url: str = Form(""), admin_users: str = Form("")):
-    if corp_id.strip():
-        set_setting("wecom_corp_id", corp_id.strip(), secret=True)
-    if public_url.strip():
-        parsed = urlparse(public_url.strip())
-        if parsed.scheme != "https" or not parsed.netloc or parsed.path not in ("", "/"):
-            set_setting("wecom_message", "请输入有效的 HTTPS 公网根地址，例如 https://tender.example.com。")
-            return RedirectResponse("/", 303)
-        set_setting("wecom_public_url", public_url.strip().rstrip("/"))
-    if admin_users.strip():
-        users = [item.strip() for item in admin_users.replace("，", ",").split(",") if item.strip()]
-        set_setting("wecom_admin_users", ",".join(dict.fromkeys(users)))
-    if not setting("wecom_callback_token", secret=True):
-        set_setting("wecom_callback_token", secrets.token_hex(16), secret=True)
-    if not setting("wecom_encoding_aes_key", secret=True):
-        set_setting("wecom_encoding_aes_key", _new_wecom_aes_key(), secret=True)
-    set_setting("wecom_message", "已生成企业微信配置。请复制下方三项到企业微信自建应用的“接收消息”页面并保存验证。")
-    return RedirectResponse("/", 303)
-
-
-@app.post("/wecom/check")
-def check_wecom_setup():
-    missing = []
-    if not setting("wecom_corp_id", secret=True): missing.append("CorpID")
-    if not setting("wecom_public_url", ""): missing.append("HTTPS 公网地址")
-    if not setting("wecom_admin_users", ""): missing.append("管理员 UserID")
-    if not setting("wecom_callback_token", secret=True): missing.append("Token")
-    if not setting("wecom_encoding_aes_key", secret=True): missing.append("EncodingAESKey")
-    if missing:
-        set_setting("wecom_message", "配置尚不完整：" + "、".join(missing))
-    else:
-        try:
-            _wecom_crypto()
-            set_setting("wecom_message", "配置已就绪。请在企业微信后台粘贴下方三项并保存验证，然后向应用发送“状态”。")
-        except Exception:
-            set_setting("wecom_message", "本地参数校验失败，请重新保存企业微信助手配置。")
-    return RedirectResponse("/", 303)
-
-
-@app.get("/wecom/callback")
-def verify_wecom_callback(request: Request):
-    try:
-        crypto = _wecom_crypto()
-        args = request.query_params
-        echo = crypto.check_signature(args["msg_signature"], args["timestamp"], args["nonce"], args["echostr"])
-        return PlainTextResponse(echo)
-    except Exception:
-        return PlainTextResponse("invalid callback", 403)
-
-
-@app.post("/wecom/callback")
-async def receive_wecom_message(request: Request):
-    try:
-        from wechatpy.enterprise import create_reply, parse_message
-
-        crypto = _wecom_crypto()
-        args = request.query_params
-        decrypted = crypto.decrypt_message(await request.body(), args["msg_signature"], args["timestamp"], args["nonce"])
-        message = parse_message(decrypted)
-        if getattr(message, "type", "") != "text":
-            reply_text = "仅支持文本指令：24、状态、立即采集、最新结果、备份。"
-        elif not _wecom_sender_allowed(message.source):
-            reply_text = "当前企业微信账号未获授权，请联系平台管理员。"
-        else:
-            reply_text = run_assistant_command(message.content)
-        encrypted = crypto.encrypt_message(create_reply(reply_text, message).render(), args["nonce"], args["timestamp"])
-        return Response(encrypted, media_type="application/xml")
-    except Exception:
-        return PlainTextResponse("invalid callback", 403)
 
 
 def run_collection(send_email: bool = True) -> None:
