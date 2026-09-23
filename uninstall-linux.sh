@@ -2,6 +2,7 @@
 set -euo pipefail
 
 INSTALL_DIR="${INSTALL_DIR:-/opt/sgcc-data-collection-platform}"
+DATA_DIR="$INSTALL_DIR/data"
 AUTO_CONFIRM=0
 for argument in "$@"; do
   case "$argument" in
@@ -13,6 +14,20 @@ done
 if [ "${EUID}" -ne 0 ]; then
   echo "请使用 sudo 运行。" >&2
   exit 1
+fi
+
+safe_target() {
+  case "$1" in
+    *'/../'*|*/..|*'/./'*|*/.) return 1 ;;
+    ""|/|/opt|/mnt|/volume1|/volume2|/home|/root|/usr|/var) return 1 ;;
+    /*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+safe_target "$INSTALL_DIR" || { echo "INSTALL_DIR 不是可安全删除的项目目录。" >&2; exit 2; }
+if [ -f "$INSTALL_DIR/.env" ]; then
+  configured_data_dir="$(sed -n 's/^DATA_DIR=//p' "$INSTALL_DIR/.env" | tail -n 1)"
+  [ -z "$configured_data_dir" ] || DATA_DIR="$configured_data_dir"
 fi
 
 if [ "$AUTO_CONFIRM" -ne 1 ]; then
@@ -33,19 +48,29 @@ if ! systemctl cat "$SERVICE_NAME.service" >/dev/null 2>&1 && systemctl cat tend
 fi
 
 if [ -f "$INSTALL_DIR/docker-compose.yml" ] && command -v docker >/dev/null 2>&1; then
-  if docker compose version >/dev/null 2>&1; then
-    docker compose -p data-collection-platform -f "$INSTALL_DIR/docker-compose.yml" down --remove-orphans 2>/dev/null || true
-  elif command -v docker-compose >/dev/null 2>&1; then
-    docker-compose -p data-collection-platform -f "$INSTALL_DIR/docker-compose.yml" down --remove-orphans 2>/dev/null || true
-  fi
+  compose_files=(-f "$INSTALL_DIR/docker-compose.yml")
+  [ ! -f "$INSTALL_DIR/docker-compose.tls.yml" ] || compose_files+=(-f "$INSTALL_DIR/docker-compose.tls.yml")
+  for project_name in sgcc-data-collection-platform data-collection-platform; do
+    if docker compose version >/dev/null 2>&1; then
+      docker compose -p "$project_name" "${compose_files[@]}" down --remove-orphans -v 2>/dev/null || true
+    elif command -v docker-compose >/dev/null 2>&1; then
+      docker-compose -p "$project_name" "${compose_files[@]}" down --remove-orphans -v 2>/dev/null || true
+    fi
+  done
 fi
 
 if command -v systemctl >/dev/null 2>&1; then
-  systemctl disable --now "$SERVICE_NAME.service" sgcc-manual-browser.service 2>/dev/null || true
+  systemctl disable --now "$SERVICE_NAME.service" tender-platform.service sgcc-manual-browser.service 2>/dev/null || true
 fi
-rm -f "/etc/systemd/system/$SERVICE_NAME.service" /etc/systemd/system/sgcc-manual-browser.service
-rm -f /etc/nginx/sites-enabled/sgcc-platform /etc/nginx/sites-available/sgcc-platform /etc/nginx/conf.d/sgcc-platform.conf
+rm -f "/etc/systemd/system/$SERVICE_NAME.service" /etc/systemd/system/tender-platform.service /etc/systemd/system/sgcc-manual-browser.service
+rm -f /etc/nginx/sites-enabled/sgcc-platform /etc/nginx/sites-enabled/tender-platform
+rm -f /etc/nginx/sites-available/sgcc-platform /etc/nginx/sites-available/tender-platform
+rm -f /etc/nginx/conf.d/sgcc-platform.conf /etc/nginx/conf.d/tender-platform.conf
 rm -rf /etc/sgcc-platform "$INSTALL_DIR"
+if [ "$DATA_DIR" != "$INSTALL_DIR/data" ] && [ -e "$DATA_DIR" ]; then
+  safe_target "$DATA_DIR" || { echo "外部数据目录未删除（路径不安全）：$DATA_DIR" >&2; exit 2; }
+  rm -rf "$DATA_DIR"
+fi
 if command -v systemctl >/dev/null 2>&1; then
   systemctl daemon-reload
   systemctl reset-failed
@@ -54,4 +79,4 @@ fi
 if command -v nginx >/dev/null 2>&1 && command -v systemctl >/dev/null 2>&1; then
   nginx -t && systemctl reload nginx || true
 fi
-echo "国网数据采集管理平台已卸载。Nginx、Docker 和其他系统服务未删除。"
+echo "国网数据采集管理平台及其程序、数据库、容器卷和旧代理配置已删除。Nginx、Docker 和其他网站/证书未删除。"

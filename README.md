@@ -62,7 +62,7 @@ curl -fsSL https://raw.githubusercontent.com/dinggood615/sgcc-data-collection-pl
 
 更新脚本会自动识别 `sgcc-platform`/兼容旧服务名及实际后端端口；更新前创建 SQLite 一致性备份，更新失败时恢复原代码和服务。
 
-一键卸载（会删除程序、数据库、浏览器会话和国网专项配置，不可恢复）：
+一键彻底卸载（会删除本项目程序、数据库、Docker 容器卷、浏览器会话及旧版代理配置，不可恢复；不会删除 VPS 的其他网站、证书或 Docker）：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/dinggood615/sgcc-data-collection-platform/main/uninstall-linux.sh | sudo bash -s -- --yes
