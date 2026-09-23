@@ -90,11 +90,13 @@ chown -R "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR"
 bash "$INSTALL_DIR/scripts/install-local-model.sh" || echo "警告：本地模型更新失败，平台将继续使用规则/OCR模式。"
 su -s /bin/bash "$SERVICE_USER" -c "set -a; source '$INSTALL_DIR/.env'; set +a; cd '$INSTALL_DIR'; .venv/bin/python -c 'from app.database import init_db; init_db()'"
 
-for nginx_file in /etc/nginx/sites-available/tender-platform /etc/nginx/conf.d/tender-platform.conf /etc/nginx/conf.d/sgcc-platform.conf; do
-  if [ -f "$nginx_file" ]; then sed -i -E 's/client_max_body_size[[:space:]]+[0-9]+[mM];/client_max_body_size 110m;/' "$nginx_file"; fi
-done
-nginx -t
-systemctl reload nginx
+rm -f /etc/nginx/sites-enabled/sgcc-platform /etc/nginx/sites-enabled/tender-platform
+rm -f /etc/nginx/sites-available/sgcc-platform /etc/nginx/sites-available/tender-platform
+rm -f /etc/nginx/conf.d/sgcc-platform.conf /etc/nginx/conf.d/tender-platform.conf
+if command -v nginx >/dev/null 2>&1 && systemctl is-active --quiet nginx; then
+  nginx -t
+  systemctl reload nginx
+fi
 systemctl restart "$SERVICE_NAME"
 
 echo "正在等待更新后的平台服务启动……"

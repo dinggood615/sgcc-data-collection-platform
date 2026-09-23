@@ -42,6 +42,17 @@ git_repo() {
   if [ -n "${GITHUB_TOKEN:-}" ]; then git -c http.extraHeader="Authorization: Bearer ${GITHUB_TOKEN}" "$@"; else git "$@"; fi
 }
 
+remove_legacy_proxy_config() {
+  # These are only paths created by earlier versions of this project. Do not
+  # inspect or alter any other virtual host, certificate, or proxy service.
+  rm -f /etc/nginx/sites-enabled/sgcc-platform /etc/nginx/sites-enabled/tender-platform
+  rm -f /etc/nginx/sites-available/sgcc-platform /etc/nginx/sites-available/tender-platform
+  rm -f /etc/nginx/conf.d/sgcc-platform.conf /etc/nginx/conf.d/tender-platform.conf
+  if command -v nginx >/dev/null 2>&1 && systemctl is-active --quiet nginx; then
+    nginx -t && systemctl reload nginx
+  fi
+}
+
 wait_for_platform() {
   local attempt
   echo "正在等待数据采集管理平台启动……"
@@ -57,6 +68,7 @@ wait_for_platform() {
 install_packages
 id "$SERVICE_USER" >/dev/null 2>&1 || useradd --system --create-home --shell /usr/sbin/nologin "$SERVICE_USER"
 if [ -d "$INSTALL_DIR/.git" ]; then git_repo -C "$INSTALL_DIR" pull --ff-only; else git_repo clone "$REPOSITORY_URL" "$INSTALL_DIR"; fi
+remove_legacy_proxy_config
 find "$INSTALL_DIR/app" -type f \( -name '*.py' -o -name '*.html' -o -name '*.css' \) -print0 | xargs -0 -r -n1 iconv -f UTF-8 -t UTF-8 >/dev/null || die "应用文件不是 UTF-8 编码，请重新下载项目后再安装。"
 python3 -m venv "$INSTALL_DIR/.venv"
 "$INSTALL_DIR/.venv/bin/pip" install --upgrade pip wheel

@@ -67,6 +67,17 @@ compose() {
   fi
 }
 
+remove_legacy_caddy() {
+  # docker-compose.tls.yml exists only in installations from older releases.
+  # Compose scopes removal to this project's name, so other containers remain untouched.
+  [ -f "$INSTALL_DIR/docker-compose.tls.yml" ] || return 0
+  if [ "$COMPOSE_MODE" = v2 ]; then
+    (cd "$INSTALL_DIR" && docker compose -p "$PROJECT_NAME" -f docker-compose.yml -f docker-compose.tls.yml rm -sf caddy) || true
+  else
+    (cd "$INSTALL_DIR" && docker-compose -p "$PROJECT_NAME" -f docker-compose.yml -f docker-compose.tls.yml rm -sf caddy) || true
+  fi
+}
+
 random_hex() {
   if command -v openssl >/dev/null 2>&1; then openssl rand -hex 32
   else need od; od -An -N32 -tx1 /dev/urandom | tr -d ' \n'
@@ -148,6 +159,7 @@ install_or_update() {
   fi
   [ "$ACTION" != update ] || backup_before_update
   download_source
+  remove_legacy_caddy
   prepare_environment
   cd "$INSTALL_DIR"
   compose up -d --build --remove-orphans
