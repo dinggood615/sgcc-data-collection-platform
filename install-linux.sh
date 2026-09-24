@@ -78,7 +78,7 @@ if [ ! -f "$INSTALL_DIR/.env" ]; then
   sed -i "s|APP_SECRET=.*|APP_SECRET=$(openssl rand -hex 32)|;s|ADMIN_USERNAME=.*|ADMIN_USERNAME=admin|;s|ADMIN_PASSWORD=.*|ADMIN_PASSWORD=admin|;s|DATABASE_PATH=.*|DATABASE_PATH=$INSTALL_DIR/data/platform.sqlite3|;s|SCRAPLING_STORAGE_PATH=.*|SCRAPLING_STORAGE_PATH=$INSTALL_DIR/data/scrapling-selectors.sqlite3|;s|CHROME_CDP_URL=.*|CHROME_CDP_URL=http://127.0.0.1:9222|" "$INSTALL_DIR/.env"
   chmod 600 "$INSTALL_DIR/.env"
 fi
-install -d -o "$SERVICE_USER" -g "$SERVICE_USER" "$INSTALL_DIR/data"
+install -d -o "$SERVICE_USER" -g "$SERVICE_USER" "$INSTALL_DIR/data" "$INSTALL_DIR/cache"
 chown -R "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR"
 bash "$INSTALL_DIR/scripts/install-local-model.sh" || echo "警告：本地模型部署失败，平台将自动使用规则/OCR模式。"
 su -s /bin/bash "$SERVICE_USER" -c "set -a; source '$INSTALL_DIR/.env'; set +a; cd '$INSTALL_DIR'; .venv/bin/python -c 'from app.database import init_db; init_db()'"
@@ -93,6 +93,8 @@ User=$SERVICE_USER
 Group=$SERVICE_USER
 WorkingDirectory=$INSTALL_DIR
 EnvironmentFile=$INSTALL_DIR/.env
+Environment=CACHE_DIR=$INSTALL_DIR/cache
+Environment=PYTHONDONTWRITEBYTECODE=1
 ExecStart=$INSTALL_DIR/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port $PORT
 Restart=on-failure
 RestartSec=5

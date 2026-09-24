@@ -1,7 +1,7 @@
 FROM python:3.12-slim
 LABEL org.opencontainers.image.source="https://github.com/dinggood615/sgcc-data-collection-platform"
 WORKDIR /app
-ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 CACHE_DIR=/cache
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
     libreoffice-core libreoffice-writer libreoffice-calc poppler-utils 7zip unar \
     tesseract-ocr tesseract-ocr-chi-sim && rm -rf /var/lib/apt/lists/*

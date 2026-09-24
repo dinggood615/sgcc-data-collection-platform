@@ -9,4 +9,6 @@ data/
 *.db
 *.zip
 browser-profile/
+cache/
+!cache/.gitkeep
 .DS_Store

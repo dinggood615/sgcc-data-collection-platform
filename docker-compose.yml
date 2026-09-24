@@ -4,10 +4,13 @@ services:
     restart: unless-stopped
     init: true
     env_file: .env
+    environment:
+      CACHE_DIR: /cache
     ports:
       - "${PLATFORM_BIND:-0.0.0.0}:${PLATFORM_PORT:-8000}:8000"
     volumes:
       - "${DATA_DIR:-./data}:/data"
+      - "${CACHE_DIR:-./cache}:/cache"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz',timeout=3)"]
       interval: 30s

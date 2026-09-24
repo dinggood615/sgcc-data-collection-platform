@@ -90,6 +90,10 @@ curl -fsSL https://raw.githubusercontent.com/dinggood615/sgcc-data-collection-pl
 
 Docker 默认访问 `http://设备IP:8000`；不启动 Caddy、不申请证书、不占用 80/443，也不配置反向代理。可通过 `PLATFORM_PORT` 指定其他端口。
 
+## 缓存与临时文件
+
+运行时导入、导出、OCR 和文档转换产生的临时文件由 `CACHE_DIR` 统一管理。Windows 本地运行可设置为 `D:\爬虫数据平台\cache`；Docker 和 Linux 安装会自动使用项目自己的 `cache` 文件夹。
+
 ## 使用国网附件自动分析
 
 1. 在“智能筛选规则”中添加关键词。
