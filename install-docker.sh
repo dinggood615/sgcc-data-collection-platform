@@ -122,7 +122,7 @@ prepare_environment() {
     write_env_value ADMIN_PASSWORD admin
   fi
   write_env_value DATABASE_PATH /data/platform.sqlite3
-  write_env_value SCRAPLING_STORAGE_PATH /data/scrapling-selectors.sqlite3
+  write_env_value SCRAPLING_STORAGE_PATH /cache/scrapling-selectors.sqlite3
   write_env_value DATA_DIR "$DATA_DIR"
   write_env_value CACHE_DIR "$INSTALL_DIR/cache"
   write_env_value PLATFORM_PORT "$PLATFORM_PORT"
