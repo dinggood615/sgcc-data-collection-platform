@@ -15,11 +15,7 @@ from datetime import datetime
 from cryptography.fernet import Fernet, InvalidToken
 
 
-MIGRATION_SECRET_KEYS = (
-    "admin_password",
-    "smtp_auth_code",
-    "wecom_webhook",
-)
+MIGRATION_SECRET_KEYS = ("smtp_auth_code", "wecom_webhook")
 MIGRATION_MAX_BYTES = 100 * 1024 * 1024
 KEYWORD_SEED_VERSION = "2026-08-11-v1"
 CURATED_KEYWORDS = (
@@ -178,7 +174,6 @@ def init_db() -> None:
                 db.execute(f"ALTER TABLE tenders ADD COLUMN {column} {declaration}")
         db.execute("CREATE INDEX IF NOT EXISTS idx_tenders_source_item ON tenders(source,source_item_id)")
         defaults = (
-            ("admin_username", os.getenv("ADMIN_USERNAME", "admin")),
             ("schedule", ""), ("recipient", os.getenv("SMTP_TO", "")),
             ("smtp_host", os.getenv("SMTP_HOST", "")),
             ("smtp_port", os.getenv("SMTP_PORT", "")),
@@ -227,9 +222,9 @@ def backup_database(retention_days: int) -> Path:
 
 
 def reset_platform_state() -> Path:
-    """Back up and atomically clear business data while preserving access and backup policy."""
+    """Back up and atomically clear business data while preserving backup policy."""
     rollback = backup_database(int(setting("backup_retention_days", "14")))
-    preserved_keys = ("admin_username", "admin_password", "backup_schedule", "backup_retention_days")
+    preserved_keys = ("backup_schedule", "backup_retention_days")
     with connect() as db:
         preserved = db.execute(
             f"SELECT key,value FROM settings WHERE key IN ({','.join('?' for _ in preserved_keys)})",

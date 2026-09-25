@@ -24,9 +24,8 @@ cd "$INSTALL_DIR"
 if [ ! -f .env ]; then
   cp .env.example .env
   SECRET="$(openssl rand -hex 32)"
-  sed -i "s|APP_SECRET=.*|APP_SECRET=$SECRET|;s|ADMIN_PASSWORD=.*|ADMIN_PASSWORD=admin|" .env
+  sed -i "s|APP_SECRET=.*|APP_SECRET=$SECRET|" .env
   chmod 600 .env
-  echo "初始账户：admin / admin（请在首次登录后修改）"
   echo "请立即编辑 $INSTALL_DIR/.env 填入 SMTP 参数后，再访问 http://服务器IP:8000"
 fi
 docker compose up -d --build

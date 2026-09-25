@@ -21,13 +21,11 @@ class DeploymentConfigTests(unittest.TestCase):
         self.assertIn('write_env_value PLATFORM_BIND 0.0.0.0', installer)
         self.assertIn("remove_legacy_caddy", installer)
 
-    def test_installers_use_requested_default_credentials(self):
+    def test_installers_do_not_create_default_login_credentials(self):
         linux = (ROOT / "install-linux.sh").read_text(encoding="utf-8")
         docker = (ROOT / "install-docker.sh").read_text(encoding="utf-8")
-        legacy = (ROOT / "install.sh").read_text(encoding="utf-8")
-        self.assertIn("ADMIN_PASSWORD=admin", linux)
-        self.assertIn("write_env_value ADMIN_PASSWORD admin", docker)
-        self.assertIn("ADMIN_PASSWORD=admin", legacy)
+        self.assertNotIn("ADMIN_PASSWORD", linux)
+        self.assertNotIn("ADMIN_PASSWORD", docker)
 
 
 if __name__ == "__main__":

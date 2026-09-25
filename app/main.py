@@ -2,17 +2,15 @@ from __future__ import annotations
 
 import asyncio
 import os
-import secrets
 from datetime import date, timedelta
 from urllib.parse import urlparse
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse, Response
+from fastapi.responses import JSONResponse, RedirectResponse, Response
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from itsdangerous import BadSignature, URLSafeTimedSerializer
 
 from .database import backup_database, connect, export_migration_bundle, import_migration_bundle, init_db, now_text, reset_platform_state, set_setting, setting
 from .connectors.custom import profile_site, profile_site_from_manual_browser, validate_public_url, validate_site_name
@@ -24,44 +22,13 @@ app = FastAPI(title="国网数据采集管理平台")
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 templates = Jinja2Templates(directory="app/templates")
 scheduler = BackgroundScheduler(timezone="Asia/Shanghai")
-SESSION_COOKIE = "tender_session"
-SESSION_TTL_SECONDS = 8 * 60 * 60
 COLLECTABLE_CUSTOM_STATUSES = {"已适配（静态列表）", "已适配（动态浏览器）", "已适配（公开数据接口）", "已适配（专用采集器）"}
 
 
-def session_serializer() -> URLSafeTimedSerializer:
-    return URLSafeTimedSerializer(os.getenv("APP_SECRET", "development-secret-change-me"), salt="tender-platform-session")
-
-
-def has_valid_session(request: Request, username: str) -> bool:
-    token = request.cookies.get(SESSION_COOKIE, "")
-    try:
-        return secrets.compare_digest(session_serializer().loads(token, max_age=SESSION_TTL_SECONDS), username)
-    except (BadSignature, TypeError):
-        return False
-
-
 @app.middleware("http")
-async def require_admin(request: Request, call_next):
-    """Keep the dashboard private even when Docker publishes port 8000."""
-    if request.url.path.startswith("/static/") or request.url.path == "/healthz":
-        response = await call_next(request)
-        return add_security_headers(response)
-    configured = setting("admin_password", os.getenv("ADMIN_PASSWORD", "admin"), secret=True)
-    username = setting("admin_username", os.getenv("ADMIN_USERNAME", "admin"))
-    auth = request.headers.get("authorization", "")
-    try:
-        scheme, token = auth.split(" ", 1)
-        supplied_username, password = base64.b64decode(token).decode().split(":", 1)
-    except Exception:
-        scheme, supplied_username, password = "", "", ""
-    basic_ok = bool(configured and scheme.lower() == "basic" and supplied_username == username and secrets.compare_digest(password, configured))
-    if not basic_ok and not has_valid_session(request, username):
-        response = PlainTextResponse("需要管理员登录", status_code=401, headers={"WWW-Authenticate": 'Basic realm="Tender Platform"'})
-        return add_security_headers(response)
+async def add_response_headers(request: Request, call_next):
+    """Keep baseline browser protections without requiring a login."""
     response = await call_next(request)
-    if basic_ok:
-        response.set_cookie(SESSION_COOKIE, session_serializer().dumps(username), max_age=SESSION_TTL_SECONDS, httponly=True, secure=False, samesite="strict", path="/")
     return add_security_headers(response)
 
 
@@ -127,7 +94,7 @@ def dashboard_context() -> dict:
             "exclude_terms": setting("exclude_terms"),
             "smtp_host": setting("smtp_host"), "smtp_port": setting("smtp_port"),
             "smtp_user": setting("smtp_user"), "smtp_from": setting("smtp_from"),
-            "smtp_configured": bool(setting("smtp_auth_code", secret=True)), "admin_username": setting("admin_username", "admin"),
+            "smtp_configured": bool(setting("smtp_auth_code", secret=True)),
             "custom_site_message": setting("custom_site_message"),
             "backup_schedule": setting("backup_schedule", "02:20"),
             "backup_retention_days": setting("backup_retention_days", "14"),
@@ -405,15 +372,6 @@ def save_backup_settings(backup_schedule: str = Form(...), backup_retention_days
     set_setting("backup_schedule", backup_schedule)
     set_setting("backup_retention_days", str(backup_retention_days))
     reschedule()
-    return RedirectResponse("/", 303)
-
-
-@app.post("/admin-credentials")
-def save_admin_credentials(admin_username: str = Form(...), new_password: str = Form(...), confirm_password: str = Form(...)):
-    if len(admin_username.strip()) < 3 or len(new_password) < 8 or new_password != confirm_password:
-        return RedirectResponse("/", 303)
-    set_setting("admin_username", admin_username.strip())
-    set_setting("admin_password", new_password, secret=True)
     return RedirectResponse("/", 303)
 
 

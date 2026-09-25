@@ -55,7 +55,6 @@
 
   <section class="card wecom-push-card"><div class="section-head"><div><span class="section-kicker">NOTIFICATION</span><h2>企业微信群推送</h2><p>可选配置群机器人 Webhook，用于接收测试和采集通知。</p></div></div><form action="/wecom/push-settings" method="post" class="form-grid"><label class="wide">群机器人 Webhook（可选）<input type="url" name="webhook" placeholder="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=..."></label><div class="meta">只调用企业微信提供的群机器人接口，不需要开放平台公网回调地址。</div><button class="button primary">保存推送设置</button></form><form action="/wecom/push-test" method="post" class="actions"><button class="button secondary">测试群机器人</button></form>{% if wecom_webhook_configured %}<p class="meta">群机器人 Webhook 已保存；留空保存不会修改。</p>{% endif %}{% if wecom_push_message %}<p class="notice">{{ wecom_push_message }}</p>{% endif %}</section>
 
-  <section class="card account-card"><div class="section-head"><div><span class="section-kicker">SECURITY</span><h2>管理员账户</h2><p>首次登录后请立即修改默认账户。</p></div></div><form action="/admin-credentials" method="post" class="form-grid"><label>管理员用户名<input name="admin_username" value="{{ admin_username }}" required></label><label>新密码<input type="password" name="new_password" minlength="8" placeholder="至少 8 位" required></label><label>确认密码<input type="password" name="confirm_password" minlength="8" required></label><button class="button secondary">保存账户</button></form></section>
 </main>
 <footer>国网数据采集管理平台 · 仅处理公开或合法授权取得的信息</footer>
 </body>

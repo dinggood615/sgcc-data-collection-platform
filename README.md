@@ -52,7 +52,7 @@
 curl -fsSL https://raw.githubusercontent.com/dinggood615/sgcc-data-collection-platform/main/install-linux.sh | sudo bash
 ```
 
-默认访问 `http://服务器IP:5555`，初始账号和密码均为 `admin`，请在首次登录后修改。安装器不会安装或修改 Nginx/Caddy，不申请证书，不占用 80/443，也不配置反向代理。若端口已被占用，可自行指定端口：`curl -fsSL https://raw.githubusercontent.com/dinggood615/sgcc-data-collection-platform/main/install-linux.sh | sudo PORT=5566 bash`。
+默认访问 `http://服务器IP:5555`，无需账号和密码。安装器不会安装或修改 Nginx/Caddy，不申请证书，不占用 80/443，也不配置反向代理。若端口已被占用，可自行指定端口：`curl -fsSL https://raw.githubusercontent.com/dinggood615/sgcc-data-collection-platform/main/install-linux.sh | sudo PORT=5566 bash`。
 
 更新：
 

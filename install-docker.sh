@@ -118,8 +118,6 @@ prepare_environment() {
   if [ ! -f "$INSTALL_DIR/.env" ]; then
     cp "$INSTALL_DIR/.env.example" "$INSTALL_DIR/.env"
     write_env_value APP_SECRET "$(random_hex)"
-    write_env_value ADMIN_USERNAME admin
-    write_env_value ADMIN_PASSWORD admin
   fi
   write_env_value DATABASE_PATH /data/platform.sqlite3
   write_env_value SCRAPLING_STORAGE_PATH /cache/scrapling-selectors.sqlite3
@@ -169,7 +167,6 @@ install_or_update() {
   echo "访问：http://设备IP:$PLATFORM_PORT"
   echo "提示：Docker 安装不包含 HTTPS、证书、Caddy 或反向代理。"
   echo "数据目录：$DATA_DIR"
-  echo "初始账户：admin / admin（请在首次登录后修改）"
 }
 
 uninstall_platform() {

@@ -75,7 +75,7 @@ python3 -m venv "$INSTALL_DIR/.venv"
 "$INSTALL_DIR/.venv/bin/pip" install -r "$INSTALL_DIR/requirements.txt"
 if [ ! -f "$INSTALL_DIR/.env" ]; then
   cp "$INSTALL_DIR/.env.example" "$INSTALL_DIR/.env"
-  sed -i "s|APP_SECRET=.*|APP_SECRET=$(openssl rand -hex 32)|;s|ADMIN_USERNAME=.*|ADMIN_USERNAME=admin|;s|ADMIN_PASSWORD=.*|ADMIN_PASSWORD=admin|;s|DATABASE_PATH=.*|DATABASE_PATH=$INSTALL_DIR/data/platform.sqlite3|;s|SCRAPLING_STORAGE_PATH=.*|SCRAPLING_STORAGE_PATH=$INSTALL_DIR/cache/scrapling-selectors.sqlite3|;s|CHROME_CDP_URL=.*|CHROME_CDP_URL=http://127.0.0.1:9222|" "$INSTALL_DIR/.env"
+  sed -i "s|APP_SECRET=.*|APP_SECRET=$(openssl rand -hex 32)|;s|DATABASE_PATH=.*|DATABASE_PATH=$INSTALL_DIR/data/platform.sqlite3|;s|SCRAPLING_STORAGE_PATH=.*|SCRAPLING_STORAGE_PATH=$INSTALL_DIR/cache/scrapling-selectors.sqlite3|;s|CHROME_CDP_URL=.*|CHROME_CDP_URL=http://127.0.0.1:9222|" "$INSTALL_DIR/.env"
   chmod 600 "$INSTALL_DIR/.env"
 fi
 install -d -o "$SERVICE_USER" -g "$SERVICE_USER" "$INSTALL_DIR/data" "$INSTALL_DIR/cache"
@@ -105,6 +105,5 @@ EOF
 systemctl daemon-reload
 systemctl enable --now "$SERVICE_NAME.service"
 wait_for_platform
-echo "初始账户：admin / admin（请在首次登录后修改）"
 echo "完成：访问 http://服务器IP:$PORT。"
 echo "提示：本安装仅提供 HTTP 直连，不会配置 HTTPS、证书、Nginx、Caddy 或反向代理。"
